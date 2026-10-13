@@ -147,3 +147,16 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# IDEs
+.idea/
+.vscode/
+
+# Payload uploads and test artifacts
+media/
+playwright-report/
+test-results/
+
+# Runtime and operations
+.deploy-state/
+backups/

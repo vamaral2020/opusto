@@ -1,0 +1,8 @@
+.next
+coverage
+media
+node_modules
+playwright-report
+public/placeholders
+src/payload-types.ts
+test-results

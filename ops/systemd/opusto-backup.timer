@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Opus TO backup every day
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 America/Sao_Paulo
+Persistent=true
+RandomizedDelaySec=20m
+
+[Install]
+WantedBy=timers.target

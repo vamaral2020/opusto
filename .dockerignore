@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.next
+.vscode
+backups
+coverage
+docs
+media
+node_modules
+playwright-report
+test-results
+.deploy-state
+.env
+.env.*
+!.env.example
+*.log

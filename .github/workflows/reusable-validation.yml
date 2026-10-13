@@ -1,0 +1,57 @@
+name: Reusable validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: opusto_test
+          POSTGRES_PASSWORD: opusto_test
+          POSTGRES_USER: opusto_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opusto_test -d opusto_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://opusto_test:opusto_test@127.0.0.1:5432/opusto_test
+      PAYLOAD_DISABLE_PUSH: 'true'
+      PAYLOAD_SECRET: ci-only-payload-secret
+      SITE_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm migrate
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm start > /tmp/opusto.log 2>&1 &
+      - run: timeout 120 sh -c 'until curl --fail --silent http://127.0.0.1:3000/api/health/ready >/dev/null; do sleep 2; done'
+      - run: PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 pnpm test:e2e
+      - run: docker compose -f compose.yaml config --quiet
+      - run: >-
+          APP_DOMAIN=example.test BUILD_SHA=test IMAGE_REF=ghcr.io/example/opusto:test
+          POSTGRES_DB=opusto POSTGRES_PASSWORD=test POSTGRES_USER=opusto PAYLOAD_SECRET=test
+          docker compose -f compose.prod.yaml config --quiet
+      - run: docker build --tag opusto:ci .

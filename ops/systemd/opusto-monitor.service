@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Opus TO application and host health
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/opusto/.env
+ExecStart=/opt/opusto/ops/monitor.sh
+User=root
