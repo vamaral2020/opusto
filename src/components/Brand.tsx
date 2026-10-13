@@ -1,14 +1,14 @@
 import Link from 'next/link'
 
+import { BrandMark } from './BrandMark'
+
 export function Brand() {
   return (
     <Link className="brand" href="/" aria-label="Opus TO, página inicial">
-      <span className="brand-mark" aria-hidden="true">
-        O
-      </span>
+      <BrandMark />
       <span>
         <strong>Opus TO</strong>
-        <small>Grupo Musical</small>
+        <small>Núcleo Musical · Tocantins</small>
       </span>
     </Link>
   )
