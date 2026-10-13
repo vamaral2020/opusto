@@ -26,6 +26,7 @@ export function Header() {
         <Brand />
         <button
           aria-expanded={open}
+          aria-controls="navegacao-principal"
           aria-label={open ? 'Fechar menu' : 'Abrir menu'}
           className="icon-button menu-button"
           onClick={() => setOpen((current) => !current)}
@@ -33,7 +34,17 @@ export function Header() {
         >
           {open ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
         </button>
-        <nav aria-label="Navegação principal" className={open ? 'main-nav is-open' : 'main-nav'}>
+        <nav
+          aria-label="Navegação principal"
+          className={open ? 'main-nav is-open' : 'main-nav'}
+          id="navegacao-principal"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setOpen(false)
+              document.querySelector<HTMLButtonElement>('.menu-button')?.focus()
+            }
+          }}
+        >
           {links.map((link) => (
             <Link
               aria-current={pathname.startsWith(link.href) ? 'page' : undefined}
