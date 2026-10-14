@@ -408,6 +408,21 @@ p {
 .article-header .rich-content {
   margin-top: 3rem;
 }
+.shell.news-content {
+  width: min(780px, calc(100% - 2rem));
+}
+.news-cover {
+  aspect-ratio: 16 / 9;
+  background: var(--color-line);
+  margin-bottom: clamp(2rem, 5vw, 3rem);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+.news-content .rich-content,
+.news-content .page-lead {
+  max-width: none;
+}
 .detail-aside .button {
   gap: 0.5rem;
   width: 100%;

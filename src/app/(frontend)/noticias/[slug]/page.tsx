@@ -40,18 +40,18 @@ export default async function PostPage({ params }: Props) {
   const post = result.docs[0]
   if (!post) notFound()
   return (
-    <>
-      <section className="detail-hero">
-        <MediaImage fallbackAlt="" media={post.cover} priority />
-      </section>
-      <article className="band">
-        <div className="shell narrow article-header">
+    <article className="band">
+      <div className="shell news-content">
+        <div className="news-cover">
+          <MediaImage fallbackAlt="" media={post.cover} priority />
+        </div>
+        <div className="article-header">
           <p className="eyebrow">{post.publishedAt ? formatDate(post.publishedAt) : 'Notícia'}</p>
           <h1 className="detail-title">{post.title}</h1>
           <p className="page-lead">{post.excerpt}</p>
           <RichContent data={post.content} />
         </div>
-      </article>
-    </>
+      </div>
+    </article>
   )
 }
