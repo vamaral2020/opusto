@@ -36,6 +36,7 @@ const getPayloadSecret = (): string => {
 export default buildConfig({
   admin: {
     meta: { titleSuffix: ' | Opus TO' },
+    theme: 'light',
     user: Users.slug,
     importMap: { baseDir: path.resolve(dirname) },
   },
