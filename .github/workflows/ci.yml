@@ -56,3 +56,20 @@ jobs:
           POSTGRES_DB=opusto POSTGRES_PASSWORD=test POSTGRES_USER=opusto PAYLOAD_SECRET=test
           docker compose -f compose.prod.yaml config --quiet
       - run: docker build --tag opusto:ci .
+      - name: Verify production image permissions without network access
+        run: |
+          docker run --rm --network none opusto:ci sh -ec '
+            test "$(id -u)" = 1001
+            test -w "$PNPM_HOME"
+            test -w "$PNPM_HOME/store"
+            test -w "$XDG_CACHE_HOME"
+            test "$(pnpm config get pmOnFail)" = error
+            test "$(pnpm config get verifyDepsBeforeRun)" = false
+            test "$(pnpm --version)" = 11.28.5
+            pnpm exec node -e "if (process.getuid() !== 1001) process.exit(1)"
+          '
+      - name: Run migrations as the production image user
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL -e PAYLOAD_SECRET -e SITE_URL -e PAYLOAD_DISABLE_PUSH
+          opusto:ci pnpm migrate

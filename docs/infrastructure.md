@@ -2,15 +2,21 @@
 
 ## Topologia
 
-A VPS Vultr executa Nginx no host e dois containers persistentes: `app` e `postgres`. O container pontual `migrate` reutiliza exatamente a imagem da aplicação. Volumes nomeados `opusto_postgres` e `opusto_media` sobrevivem a substituições dos containers.
+A VPS executa Nginx no host e dois containers persistentes: `app` e `postgres`. O container pontual `migrate` reutiliza exatamente a imagem da aplicação. Volumes nomeados `opusto_postgres` e `opusto_media` sobrevivem a substituições dos containers.
 
 Somente Nginx recebe tráfego público. A aplicação liga em `127.0.0.1:3000`; PostgreSQL não declara `ports` em produção. A rede padrão do Compose permite comunicação interna por nome de serviço.
 
 ## Orçamento de recursos
 
-O Compose limita aplicação a 1,5 GB/1,5 CPU e PostgreSQL a 1,5 GB/1,25 CPU. O restante fica disponível ao sistema, Nginx, Docker e tarefas curtas. São limites iniciais, a ajustar com métricas reais. Evite executar build, transcodificação de vídeo ou uma stack pesada de métricas na VPS.
+O Compose limita aplicação a 1,5 GB/0,90 CPU e PostgreSQL a 1,5 GB/0,50 CPU para a VPS de 1 vCPU e 4 GB de RAM. Os limites de CPU são tetos individuais, não reservas: quando há concorrência, os serviços compartilham a única vCPU com o sistema, Nginx, Docker e tarefas curtas. São limites iniciais, a ajustar com métricas reais. Evite executar build, transcodificação de vídeo ou uma stack pesada de métricas na VPS.
 
 Vídeos devem permanecer em plataformas externas. Imagens do CMS usam o volume local; acompanhe crescimento e migre para storage S3 compatível antes de o disco se tornar gargalo.
+
+## PNPM na imagem de produção
+
+A aplicação e o serviço `migrate` executam como `nextjs` (UID 1001). `/pnpm`, seu store e `/home/nextjs/.cache` pertencem a esse usuário. As dependências são instaladas durante o build e copiadas para a imagem final.
+
+No PNPM 11, `pnpm_config_verify_deps_before_run=false` impede a verificação com instalação automática antes de scripts. `pnpm_config_pm_on_fail=error` faz uma divergência da versão fixa falhar sem baixar outro PNPM. A CI verifica permissões e execução sem rede e executa as migrações com o usuário padrão da imagem contra seu banco de testes.
 
 ## Disponibilidade e logs
 
