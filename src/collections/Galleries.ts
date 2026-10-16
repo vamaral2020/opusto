@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { authenticated, publishedOrAuthenticated } from '@/access'
+import { imageField } from '@/fields/image'
 import { seoFields } from '@/fields/seo'
 import { slugField } from '@/fields/slug'
 
@@ -25,7 +26,12 @@ export const Galleries: CollectionConfig = {
       type: 'array',
       label: 'Imagens',
       fields: [
-        { name: 'image', type: 'relationship', relationTo: 'media', required: true },
+        imageField(
+          'image',
+          'Imagem da galeria',
+          'Fotografia da galeria. Proporção recomendada: 3:2, largura de 1200 px.',
+          true,
+        ),
         { name: 'caption', type: 'text', label: 'Legenda' },
       ],
     },

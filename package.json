@@ -25,7 +25,8 @@
     "test": "pnpm test:int",
     "test:e2e": "cross-env NODE_OPTIONS=--no-deprecation playwright test",
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:cms": "cross-env NODE_OPTIONS=--no-deprecation NODE_ENV=test PAYLOAD_DISABLE_PUSH=true tsx tests/integration/cms-images.ts"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "3.90.2",

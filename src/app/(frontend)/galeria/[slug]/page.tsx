@@ -1,9 +1,40 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { connection } from 'next/server'
 
 import { MediaImage } from '@/components/MediaImage'
+import { contentMetadata } from '@/lib/metadata'
+import { getSiteSettings } from '@/lib/site-settings'
 import { getCMS } from '@/lib/payload'
 import { externalVideoEmbed } from '@/lib/video'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  await connection()
+  const { slug } = await params
+  const result = await (
+    await getCMS()
+  ).find({
+    collection: 'galleries',
+    depth: 1,
+    limit: 1,
+    overrideAccess: false,
+    where: { slug: { equals: slug } },
+  })
+  const gallery = result.docs[0]
+  if (!gallery) return {}
+  const settings = await getSiteSettings()
+  return contentMetadata({
+    title: gallery.title,
+    description: gallery.description,
+    meta: gallery.meta,
+    image: gallery.images?.[0]?.image,
+    socialImage: settings.socialImage,
+  })
+}
 
 export default async function GalleryDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   await connection()

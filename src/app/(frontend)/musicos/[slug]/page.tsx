@@ -1,9 +1,40 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { connection } from 'next/server'
 
 import { MediaImage } from '@/components/MediaImage'
 import { RichContent } from '@/components/RichContent'
+import { contentMetadata } from '@/lib/metadata'
+import { getSiteSettings } from '@/lib/site-settings'
 import { getCMS } from '@/lib/payload'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  await connection()
+  const { slug } = await params
+  const result = await (
+    await getCMS()
+  ).find({
+    collection: 'musicians',
+    depth: 1,
+    limit: 1,
+    overrideAccess: false,
+    where: { slug: { equals: slug } },
+  })
+  const musician = result.docs[0]
+  if (!musician) return {}
+  const settings = await getSiteSettings()
+  return contentMetadata({
+    title: musician.name,
+    description: musician.instrument,
+    meta: musician.meta,
+    image: musician.portrait,
+    socialImage: settings.socialImage,
+  })
+}
 
 export default async function MusicianPage({ params }: { params: Promise<{ slug: string }> }) {
   await connection()

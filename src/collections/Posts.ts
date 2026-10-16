@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { authenticated, publishedOrAuthenticated } from '@/access'
+import { imageField } from '@/fields/image'
 import { seoFields } from '@/fields/seo'
 import { slugField } from '@/fields/slug'
 
@@ -25,7 +26,11 @@ export const Posts: CollectionConfig = {
       label: 'Data de publicação',
       admin: { position: 'sidebar' },
     },
-    { name: 'cover', type: 'relationship', label: 'Imagem', relationTo: 'media' },
+    imageField(
+      'cover',
+      'Capa da notícia',
+      'Usada nos cartões e no destaque da notícia. Proporção recomendada: 3:2, largura mínima de 1200 px.',
+    ),
     { name: 'content', type: 'richText', label: 'Conteúdo', required: true },
     seoFields,
   ],

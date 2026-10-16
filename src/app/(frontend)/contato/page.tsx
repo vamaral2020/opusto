@@ -4,9 +4,24 @@ import { connection } from 'next/server'
 
 import { ContactForm } from '@/components/ContactForm'
 import { PageIntro } from '@/components/PageIntro'
+import { contentMetadata } from '@/lib/metadata'
+import { getSiteSettings } from '@/lib/site-settings'
 import { getCMS } from '@/lib/payload'
 
-export const metadata: Metadata = { title: 'Contato' }
+export async function generateMetadata(): Promise<Metadata> {
+  await connection()
+  const contact = await (
+    await getCMS()
+  ).findGlobal({ slug: 'contact', depth: 1, overrideAccess: false })
+  const settings = await getSiteSettings()
+  return contentMetadata({
+    title: contact.title,
+    description: contact.introduction,
+    meta: contact.meta,
+    image: undefined,
+    socialImage: settings.socialImage,
+  })
+}
 
 export default async function ContactPage() {
   await connection()

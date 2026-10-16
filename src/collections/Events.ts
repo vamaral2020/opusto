@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { authenticated, publishedOrAuthenticated } from '@/access'
+import { imageField } from '@/fields/image'
 import { seoFields } from '@/fields/seo'
 import { slugField } from '@/fields/slug'
 
@@ -24,7 +25,11 @@ export const Events: CollectionConfig = {
     { name: 'venue', type: 'text', label: 'Local', required: true },
     { name: 'city', type: 'text', label: 'Cidade', defaultValue: 'Palmas - TO' },
     { name: 'ticketURL', type: 'text', label: 'Link de ingressos' },
-    { name: 'cover', type: 'relationship', label: 'Imagem', relationTo: 'media' },
+    imageField(
+      'cover',
+      'Imagem do concerto',
+      'Usada na agenda e no destaque do concerto. Proporção recomendada: 3:2, largura mínima de 1200 px.',
+    ),
     { name: 'content', type: 'richText', label: 'Descrição' },
     seoFields,
   ],

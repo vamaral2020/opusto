@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { authenticated, publishedOrAuthenticated } from '@/access'
+import { imageField } from '@/fields/image'
 
 export const Sponsors: CollectionConfig = {
   slug: 'sponsors',
@@ -15,7 +16,12 @@ export const Sponsors: CollectionConfig = {
   },
   fields: [
     { name: 'name', type: 'text', label: 'Nome', required: true },
-    { name: 'logo', type: 'relationship', label: 'Logomarca', relationTo: 'media', required: true },
+    imageField(
+      'logo',
+      'Logomarca',
+      'Use PNG ou WebP com fundo transparente e largura de 600 px; a proporção original será preservada.',
+      true,
+    ),
     { name: 'website', type: 'text', label: 'Site' },
     {
       name: 'tier',

@@ -3,9 +3,24 @@ import { connection } from 'next/server'
 
 import { PageIntro } from '@/components/PageIntro'
 import { RichContent } from '@/components/RichContent'
+import { contentMetadata } from '@/lib/metadata'
+import { getSiteSettings } from '@/lib/site-settings'
 import { getCMS } from '@/lib/payload'
 
-export const metadata: Metadata = { title: 'Privacidade' }
+export async function generateMetadata(): Promise<Metadata> {
+  await connection()
+  const privacy = await (
+    await getCMS()
+  ).findGlobal({ slug: 'privacy', depth: 1, overrideAccess: false })
+  const settings = await getSiteSettings()
+  return contentMetadata({
+    title: privacy.title,
+    description: privacy.summary,
+    meta: privacy.meta,
+    image: undefined,
+    socialImage: settings.socialImage,
+  })
+}
 
 export default async function PrivacyPage() {
   await connection()

@@ -14,11 +14,36 @@ export const Media: CollectionConfig = {
     update: authenticated,
   },
   fields: [
-    { name: 'alt', type: 'text', label: 'Texto alternativo', required: true },
-    { name: 'caption', type: 'textarea', label: 'Legenda' },
-    { name: 'credit', type: 'text', label: 'Crédito ou licença' },
+    {
+      name: 'alt',
+      type: 'text',
+      label: 'Texto alternativo',
+      required: true,
+      admin: {
+        description: 'Descreva o conteúdo da imagem para pessoas que usam leitores de tela.',
+      },
+    },
+    {
+      name: 'caption',
+      type: 'textarea',
+      label: 'Legenda',
+      admin: {
+        description:
+          'Texto de apoio da imagem; exibido em uploads de textos ricos. Galerias também podem definir uma legenda por item.',
+      },
+    },
+    {
+      name: 'credit',
+      type: 'text',
+      label: 'Crédito ou licença',
+      admin: {
+        description:
+          'Autoria ou licença de uso da imagem; preservada para consulta e exibida nos textos ricos.',
+      },
+    },
   ],
   upload: {
+    adminThumbnail: 'thumbnail',
     staticDir: process.env.MEDIA_DIR || path.join(process.cwd(), 'media'),
     mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'],
     imageSizes: [
