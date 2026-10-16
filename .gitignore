@@ -160,3 +160,7 @@ test-results/
 # Runtime and operations
 .deploy-state/
 backups/
+
+# outros
+root
+root.pub
