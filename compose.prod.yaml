@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
     init: true
     mem_limit: 1536m
-    cpus: 1.5
+    cpus: 0.90
     logging:
       driver: json-file
       options:
@@ -73,7 +73,7 @@ services:
       retries: 10
     restart: unless-stopped
     mem_limit: 1536m
-    cpus: 1.25
+    cpus: 0.50
     logging:
       driver: json-file
       options:

@@ -34,12 +34,15 @@ RUN --mount=type=cache,id=pnpm-prod,target=/pnpm/store \
 FROM base AS runner
 ENV NODE_ENV=production \
   HOSTNAME=0.0.0.0 \
-  PORT=3000
+  PORT=3000 \
+  XDG_CACHE_HOME=/home/nextjs/.cache \
+  pnpm_config_pm_on_fail=error \
+  pnpm_config_verify_deps_before_run=false
 
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 --ingroup nodejs nextjs \
-  && mkdir -p /app/media \
-  && chown nextjs:nodejs /app/media
+  && mkdir -p /app/media /pnpm/store /home/nextjs/.cache \
+  && chown -R nextjs:nodejs /app/media /pnpm /home/nextjs
 
 COPY --from=production-dependencies --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
