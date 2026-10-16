@@ -1,5 +1,7 @@
 import Image from 'next/image'
 
+import { normalizeMediaURL } from '@/lib/media'
+
 type MediaLike = {
   alt?: string | null
   height?: number | null
@@ -23,7 +25,7 @@ export function MediaImage({
   priority = false,
 }: Props) {
   const resolved = typeof media === 'object' && media ? media : null
-  const src = resolved?.url || '/placeholders/orchestra-hall.webp'
+  const src = normalizeMediaURL(resolved?.url) || '/placeholders/orchestra-hall.webp'
   const alt = resolved?.alt || fallbackAlt
 
   if (fill) {
