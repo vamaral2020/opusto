@@ -126,6 +126,12 @@ p {
   height: 52px;
   width: 32px;
 }
+.brand-logo {
+  flex-shrink: 0;
+  height: 52px;
+  object-fit: contain;
+  width: 32px;
+}
 .brand strong {
   display: block;
   font-family: var(--font-display);
@@ -381,6 +387,10 @@ p {
 }
 .rich-content > * + * {
   margin-top: 1rem;
+}
+.rich-content img {
+  height: auto;
+  max-width: 100%;
 }
 .rich-content h2 {
   font-size: 2rem;

@@ -1,6 +1,7 @@
 import type { GlobalConfig } from 'payload'
 
 import { authenticated } from '@/access'
+import { imageField } from '@/fields/image'
 
 export const SiteSettings: GlobalConfig = {
   slug: 'site-settings',
@@ -22,12 +23,16 @@ export const SiteSettings: GlobalConfig = {
       required: true,
     },
     { name: 'description', type: 'textarea', label: 'Descrição padrão para SEO', maxLength: 170 },
-    {
-      name: 'socialImage',
-      type: 'relationship',
-      label: 'Imagem social padrão',
-      relationTo: 'media',
-    },
+    imageField(
+      'logo',
+      'Logotipo do site',
+      'Símbolo exibido junto ao nome no cabeçalho e rodapé. Recomenda-se PNG ou WebP transparente, proporção 3:5 e altura de 180 px. Sem seleção, será usado o símbolo atual.',
+    ),
+    imageField(
+      'socialImage',
+      'Imagem social padrão',
+      'Compartilhamento de páginas sem imagem específica. Proporção recomendada: 1,91:1 (1200 × 630 px).',
+    ),
     {
       name: 'socialLinks',
       type: 'array',

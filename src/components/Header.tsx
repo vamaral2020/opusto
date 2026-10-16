@@ -3,9 +3,7 @@
 import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
-
-import { Brand } from './Brand'
+import { useState, type ReactNode } from 'react'
 
 const links = [
   { href: '/sobre', label: 'Sobre' },
@@ -16,14 +14,14 @@ const links = [
   { href: '/patrocinadores', label: 'Patrocinadores' },
 ]
 
-export function Header() {
+export function Header({ brand }: { brand: ReactNode }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
   return (
     <header className="site-header">
       <div className="shell header-inner">
-        <Brand />
+        {brand}
         <button
           aria-expanded={open}
           aria-controls="navegacao-principal"

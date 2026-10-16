@@ -1,13 +1,14 @@
 import Link from 'next/link'
 
+import type { MediaLike } from './MediaImage'
 import { Brand } from './Brand'
 
-export function Footer() {
+export function Footer({ logo }: { logo?: MediaLike | number | null }) {
   return (
     <footer className="site-footer">
       <div className="shell footer-grid">
         <div>
-          <Brand />
+          <Brand logo={logo} />
           <p className="footer-note">Música de concerto no Tocantins.</p>
         </div>
         <nav aria-label="Links do rodapé">

@@ -1,6 +1,7 @@
 import type { GlobalConfig } from 'payload'
 
 import { authenticated } from '@/access'
+import { imageField } from '@/fields/image'
 import { seoFields } from '@/fields/seo'
 
 export const Home: GlobalConfig = {
@@ -29,7 +30,11 @@ export const Home: GlobalConfig = {
         'Uma iniciativa cultural dedicada à música de concerto e à formação de uma orquestra filarmônica no Tocantins.',
       required: true,
     },
-    { name: 'heroImage', type: 'relationship', label: 'Imagem principal', relationTo: 'media' },
+    imageField(
+      'heroImage',
+      'Imagem principal',
+      'Banner da página inicial. Proporção recomendada: 16:9, largura de 1920 px.',
+    ),
     {
       name: 'aboutTitle',
       type: 'text',
@@ -37,6 +42,11 @@ export const Home: GlobalConfig = {
       defaultValue: 'Uma orquestra em construção',
     },
     { name: 'aboutText', type: 'textarea', label: 'Resumo institucional', maxLength: 600 },
+    imageField(
+      'aboutImage',
+      'Imagem institucional',
+      'Seção institucional da página inicial. Proporção recomendada: 3:2, largura de 1080 px.',
+    ),
     {
       name: 'featuredEvents',
       type: 'relationship',

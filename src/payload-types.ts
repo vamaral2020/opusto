@@ -175,8 +175,17 @@ export interface User {
  */
 export interface Media {
   id: number;
+  /**
+   * Descreva o conteúdo da imagem para pessoas que usam leitores de tela.
+   */
   alt: string;
+  /**
+   * Texto de apoio da imagem; exibido em uploads de textos ricos. Galerias também podem definir uma legenda por item.
+   */
   caption?: string | null;
+  /**
+   * Autoria ou licença de uso da imagem; preservada para consulta e exibida nos textos ricos.
+   */
   credit?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -230,6 +239,9 @@ export interface Event {
   venue: string;
   city?: string | null;
   ticketURL?: string | null;
+  /**
+   * Usada na agenda e no destaque do concerto. Proporção recomendada: 3:2, largura mínima de 1200 px. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
   cover?: (number | null) | Media;
   content?: {
     root: {
@@ -247,8 +259,17 @@ export interface Event {
     [k: string]: unknown;
   } | null;
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   updatedAt: string;
@@ -265,6 +286,9 @@ export interface Post {
   slug: string;
   excerpt: string;
   publishedAt?: string | null;
+  /**
+   * Usada nos cartões e no destaque da notícia. Proporção recomendada: 3:2, largura mínima de 1200 px. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
   cover?: (number | null) | Media;
   content: {
     root: {
@@ -282,8 +306,17 @@ export interface Post {
     [k: string]: unknown;
   };
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   updatedAt: string;
@@ -299,6 +332,9 @@ export interface Musician {
   name: string;
   slug: string;
   instrument: string;
+  /**
+   * Retrato para a listagem e o perfil. Proporção recomendada: 4:5, largura de 800 px. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
   portrait?: (number | null) | Media;
   biography?: {
     root: {
@@ -317,8 +353,17 @@ export interface Musician {
   } | null;
   order?: number | null;
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   updatedAt: string;
@@ -337,6 +382,9 @@ export interface Gallery {
   eventDate?: string | null;
   images?:
     | {
+        /**
+         * Fotografia da galeria. Proporção recomendada: 3:2, largura de 1200 px. Selecione uma mídia existente ou carregue uma nova.
+         */
         image: number | Media;
         caption?: string | null;
         id?: string | null;
@@ -350,8 +398,17 @@ export interface Gallery {
       }[]
     | null;
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   updatedAt: string;
@@ -365,6 +422,9 @@ export interface Gallery {
 export interface Sponsor {
   id: number;
   name: string;
+  /**
+   * Use PNG ou WebP com fundo transparente e largura de 600 px; a proporção original será preservada. Selecione uma mídia existente ou carregue uma nova.
+   */
   logo: number | Media;
   website?: string | null;
   tier: 'sponsor' | 'supporter' | 'partner';
@@ -746,14 +806,30 @@ export interface Home {
   eyebrow?: string | null;
   title: string;
   introduction: string;
+  /**
+   * Banner da página inicial. Proporção recomendada: 16:9, largura de 1920 px. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
   heroImage?: (number | null) | Media;
   aboutTitle?: string | null;
   aboutText?: string | null;
+  /**
+   * Seção institucional da página inicial. Proporção recomendada: 3:2, largura de 1080 px. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
+  aboutImage?: (number | null) | Media;
   featuredEvents?: (number | Event)[] | null;
   featuredPosts?: (number | Post)[] | null;
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   _status?: ('draft' | 'published') | null;
@@ -768,6 +844,9 @@ export interface About {
   id: number;
   title: string;
   lead?: string | null;
+  /**
+   * Imagem da página Sobre. Proporção recomendada: 3:2, largura de 1080 px. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
   image?: (number | null) | Media;
   content?: {
     root: {
@@ -785,8 +864,17 @@ export interface About {
     [k: string]: unknown;
   } | null;
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   _status?: ('draft' | 'published') | null;
@@ -804,8 +892,17 @@ export interface Contact {
   email?: string | null;
   phone?: string | null;
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   _status?: ('draft' | 'published') | null;
@@ -836,8 +933,17 @@ export interface Privacy {
     [k: string]: unknown;
   } | null;
   meta?: {
+    /**
+     * Opcional. Sem preenchimento, usa o título do conteúdo.
+     */
     title?: string | null;
+    /**
+     * Opcional. Resumo de até 170 caracteres.
+     */
     description?: string | null;
+    /**
+     * Imagem específica para Open Graph e redes sociais. Proporção recomendada: 1,91:1 (1200 × 630 px). Sem seleção, usa a imagem do conteúdo ou a imagem social padrão. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+     */
     image?: (number | null) | Media;
   };
   _status?: ('draft' | 'published') | null;
@@ -853,6 +959,13 @@ export interface SiteSetting {
   organizationName: string;
   shortName: string;
   description?: string | null;
+  /**
+   * Símbolo exibido junto ao nome no cabeçalho e rodapé. Recomenda-se PNG ou WebP transparente, proporção 3:5 e altura de 180 px. Sem seleção, será usado o símbolo atual. Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
+  logo?: (number | null) | Media;
+  /**
+   * Compartilhamento de páginas sem imagem específica. Proporção recomendada: 1,91:1 (1200 × 630 px). Selecione uma mídia existente ou carregue uma nova. Remova a seleção para usar o fallback, quando disponível.
+   */
   socialImage?: (number | null) | Media;
   socialLinks?:
     | {
@@ -876,6 +989,7 @@ export interface HomeSelect<T extends boolean = true> {
   heroImage?: T;
   aboutTitle?: T;
   aboutText?: T;
+  aboutImage?: T;
   featuredEvents?: T;
   featuredPosts?: T;
   meta?:
@@ -960,6 +1074,7 @@ export interface SiteSettingsSelect<T extends boolean = true> {
   organizationName?: T;
   shortName?: T;
   description?: T;
+  logo?: T;
   socialImage?: T;
   socialLinks?:
     | T

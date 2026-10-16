@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import { connection } from 'next/server'
@@ -6,7 +7,22 @@ import { EmptyState } from '@/components/EmptyState'
 import { EventCard } from '@/components/EventCard'
 import { MediaImage } from '@/components/MediaImage'
 import { PostCard } from '@/components/PostCard'
+import { contentMetadata } from '@/lib/metadata'
+import { getSiteSettings } from '@/lib/site-settings'
 import { getCMS } from '@/lib/payload'
+
+export async function generateMetadata(): Promise<Metadata> {
+  await connection()
+  const home = await (await getCMS()).findGlobal({ slug: 'home', depth: 1, overrideAccess: false })
+  const settings = await getSiteSettings()
+  return contentMetadata({
+    title: home.title,
+    description: home.introduction,
+    meta: home.meta,
+    image: home.heroImage,
+    socialImage: settings.socialImage,
+  })
+}
 
 export default async function HomePage() {
   await connection()
@@ -59,7 +75,10 @@ export default async function HomePage() {
       <section className="band band-white">
         <div className="shell split">
           <div className="editorial-image">
-            <MediaImage fallbackAlt="Detalhe de instrumentos de orquestra" media={null} />
+            <MediaImage
+              fallbackAlt="Detalhe de instrumentos de orquestra"
+              media={home.aboutImage}
+            />
           </div>
           <div className="editorial-copy">
             <p className="eyebrow">Opus Tocantins</p>

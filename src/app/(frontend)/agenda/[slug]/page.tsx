@@ -6,27 +6,34 @@ import { connection } from 'next/server'
 import { MediaImage } from '@/components/MediaImage'
 import { RichContent } from '@/components/RichContent'
 import { formatDateTime } from '@/lib/format'
+import { contentMetadata } from '@/lib/metadata'
+import { getSiteSettings } from '@/lib/site-settings'
 import { getCMS } from '@/lib/payload'
 
 type Props = { params: Promise<{ slug: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  await connection()
   const { slug } = await params
   const result = await (
     await getCMS()
   ).find({
+    depth: 1,
     collection: 'events',
     limit: 1,
     overrideAccess: false,
     where: { slug: { equals: slug } },
   })
   const event = result.docs[0]
-  return event
-    ? {
-        title: event.meta?.title || event.title,
-        description: event.meta?.description || event.summary,
-      }
-    : {}
+  if (!event) return {}
+  const settings = await getSiteSettings()
+  return contentMetadata({
+    title: event.title,
+    description: event.summary,
+    meta: event.meta,
+    image: event.cover,
+    socialImage: settings.socialImage,
+  })
 }
 
 export default async function EventPage({ params }: Props) {

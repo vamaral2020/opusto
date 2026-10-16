@@ -12,7 +12,9 @@ test('protects the administration area with Payload authentication', async ({ pa
   await page.goto('/admin')
 
   await expect(page).toHaveURL(/\/admin\/(login|create-first-user)/)
-  await expect(page.getByRole('heading', { name: /welcome|login|entrar/i })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /login|entrar|create|criar/i }).first(),
+  ).toBeVisible()
   await expect(page.getByRole('textbox', { name: /email/i })).toBeVisible()
 })
 

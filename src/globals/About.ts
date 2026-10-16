@@ -1,6 +1,7 @@
 import type { GlobalConfig } from 'payload'
 
 import { authenticated } from '@/access'
+import { imageField } from '@/fields/image'
 import { seoFields } from '@/fields/seo'
 
 export const About: GlobalConfig = {
@@ -16,7 +17,11 @@ export const About: GlobalConfig = {
       required: true,
     },
     { name: 'lead', type: 'textarea', label: 'Introdução', maxLength: 500 },
-    { name: 'image', type: 'relationship', label: 'Imagem', relationTo: 'media' },
+    imageField(
+      'image',
+      'Imagem institucional',
+      'Imagem da página Sobre. Proporção recomendada: 3:2, largura de 1080 px.',
+    ),
     { name: 'content', type: 'richText', label: 'Conteúdo institucional' },
     seoFields,
   ],

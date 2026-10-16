@@ -2,7 +2,7 @@ import Image from 'next/image'
 
 import { normalizeMediaURL } from '@/lib/media'
 
-type MediaLike = {
+export type MediaLike = {
   alt?: string | null
   height?: number | null
   url?: string | null
@@ -15,6 +15,7 @@ type Props = {
   fill?: boolean
   media?: MediaLike | number | null
   priority?: boolean
+  sizes?: string
 }
 
 export function MediaImage({
@@ -23,6 +24,7 @@ export function MediaImage({
   fill = true,
   media,
   priority = false,
+  sizes,
 }: Props) {
   const resolved = typeof media === 'object' && media ? media : null
   const src = normalizeMediaURL(resolved?.url) || '/placeholders/orchestra-hall.webp'
@@ -30,7 +32,14 @@ export function MediaImage({
 
   if (fill) {
     return (
-      <Image alt={alt} className={className} fill priority={priority} sizes="100vw" src={src} />
+      <Image
+        alt={alt}
+        className={className}
+        fill
+        priority={priority}
+        sizes={sizes || '100vw'}
+        src={src}
+      />
     )
   }
 
@@ -40,6 +49,7 @@ export function MediaImage({
       className={className}
       height={resolved?.height || 720}
       priority={priority}
+      sizes={sizes}
       src={src}
       width={resolved?.width || 1080}
     />
