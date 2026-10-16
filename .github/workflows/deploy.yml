@@ -43,7 +43,7 @@ jobs:
   deploy:
     needs: image
     runs-on: ubuntu-24.04
-    environment: production
+    environment: production-opus
     steps:
       - uses: actions/checkout@v6
       - name: Configure SSH
