@@ -24,6 +24,20 @@ os.chmod('/etc/opusto/.env.backup', 0o600)
 assert run(['id', '-Gn', 'opusto-ci']).stdout.strip() == 'opusto-ci'
 # Reinstallation is safe; suspicious existing privileges are never silently retained.
 assert run(['/bin/bash', '/reviewed/ops/security/install-reviewed.sh', '--install-reviewed']).returncode == 0
+# Refuse an existing account aliased to UID/GID zero, even with an innocent name.
+passwd = Path('/etc/passwd').read_text()
+try:
+    for field in [2, 3]:
+        records = []
+        for line in passwd.splitlines():
+            parts = line.split(':')
+            if parts[0] == 'opusto-ci':
+                parts[field] = '0'
+            records.append(':'.join(parts))
+        Path('/etc/passwd').write_text('\n'.join(records) + '\n')
+        assert run(['/bin/bash', '/reviewed/ops/security/install-reviewed.sh', '--install-reviewed']).returncode != 0
+finally:
+    Path('/etc/passwd').write_text(passwd)
 subprocess.run(['usermod', '-aG', 'sudo', 'opusto-ci'], check=True)
 assert run(['/bin/bash', '/reviewed/ops/security/install-reviewed.sh', '--install-reviewed']).returncode != 0
 subprocess.run(['usermod', '-G', '', 'opusto-ci'], check=True)

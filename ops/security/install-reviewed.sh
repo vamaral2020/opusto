@@ -17,6 +17,7 @@ for entry in [*root.parents, root, *root.rglob('*')]:
         raise SystemExit('Reviewed staging tree and ancestors must be root-owned, without symlinks or group/other writes')
 CHECK
 if id opusto-ci >/dev/null 2>&1; then
+  [[ $(id -u opusto-ci) != 0 && $(id -g opusto-ci) != 0 ]] || { echo 'CI account must never use UID/GID zero' >&2; exit 1; }
   [[ $(id -Gn opusto-ci) == opusto-ci ]] || { echo 'Existing CI account has unexpected groups; stop for administrative review' >&2; exit 1; }
   [[ $(getent passwd opusto-ci | cut -d: -f6-7) == /var/empty/opusto-ci:/bin/sh ]] || { echo 'Unexpected CI account home/shell' >&2; exit 1; }
 else
