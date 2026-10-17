@@ -4,10 +4,10 @@ set +x
 set -euo pipefail
 umask 077
 
-DEPLOY_DIR=${DEPLOY_DIR:-/opt/opusto}
-ENV_FILE=${ENV_FILE:-$DEPLOY_DIR/.env}
-BACKUP_ENV_FILE=${BACKUP_ENV_FILE:-$DEPLOY_DIR/.env.backup}
-COMPOSE_FILE=${COMPOSE_FILE:-$DEPLOY_DIR/compose.prod.yaml}
+DEPLOY_DIR=${DEPLOY_DIR:-/var/lib/opusto}
+ENV_FILE=${ENV_FILE:-/etc/opusto/.env}
+BACKUP_ENV_FILE=${BACKUP_ENV_FILE:-/etc/opusto/.env.backup}
+COMPOSE_FILE=${COMPOSE_FILE:-/etc/opusto/compose.prod.yaml}
 MODE=${1:-scheduled}
 phase=configuration
 run_dir=

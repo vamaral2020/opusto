@@ -3,9 +3,9 @@ set -eu
 
 TARGET_IMAGE=${1:?usage: deploy.sh IMAGE_REF BUILD_SHA}
 TARGET_SHA=${2:?usage: deploy.sh IMAGE_REF BUILD_SHA}
-DEPLOY_DIR=${DEPLOY_DIR:-/opt/opusto}
-ENV_FILE=${ENV_FILE:-$DEPLOY_DIR/.env}
-COMPOSE_FILE=${COMPOSE_FILE:-$DEPLOY_DIR/compose.prod.yaml}
+DEPLOY_DIR=${DEPLOY_DIR:-/var/lib/opusto}
+ENV_FILE=${ENV_FILE:-/etc/opusto/.env}
+COMPOSE_FILE=${COMPOSE_FILE:-/etc/opusto/compose.prod.yaml}
 HEALTH_RETRIES=${HEALTH_RETRIES:-24}
 
 cd "$DEPLOY_DIR"
@@ -29,7 +29,7 @@ compose() {
 }
 
 if [ "${BACKUP_REQUIRED:-false}" = "true" ]; then
-  "${BACKUP_SCRIPT:-$DEPLOY_DIR/ops/backup.sh}" predeploy
+  "${BACKUP_SCRIPT:-/usr/local/libexec/opusto/backup.sh}" predeploy
 fi
 
 # Failures before the swap leave the running application untouched.

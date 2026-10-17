@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
-DEPLOY_DIR=${DEPLOY_DIR:-/opt/opusto}
-ENV_FILE=${ENV_FILE:-$DEPLOY_DIR/.env}
-COMPOSE_FILE=${COMPOSE_FILE:-$DEPLOY_DIR/compose.prod.yaml}
+DEPLOY_DIR=${DEPLOY_DIR:-/var/lib/opusto}
+ENV_FILE=${ENV_FILE:-/etc/opusto/.env}
+COMPOSE_FILE=${COMPOSE_FILE:-/etc/opusto/compose.prod.yaml}
 STATE_FILE="$DEPLOY_DIR/.deploy-state/previous-image"
 
 test -s "$STATE_FILE"
