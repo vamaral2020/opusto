@@ -5,6 +5,7 @@ import os
 import socket
 import subprocess
 import threading
+import time
 
 
 def run(args, **kwargs):
@@ -54,9 +55,25 @@ for name, content in {
     tool = Path('/usr/bin') / name
     tool.write_text(content)
     tool.chmod(0o755)
+# Authenticate through real sshd as the provisioned CI identity, with an ephemeral key.
+subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', '/root/ci-test-key'], check=True)
+Path('/etc/ssh/authorized_keys/opusto-ci').write_text('restrict ' + Path('/root/ci-test-key.pub').read_text())
+os.chmod('/etc/ssh/authorized_keys/opusto-ci', 0o644)
+sshd = subprocess.Popen(['/usr/sbin/sshd', '-D', '-e', '-p', '2222', '-o', 'ListenAddress=127.0.0.1'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+for attempt in range(40):
+    try:
+        with socket.create_connection(('127.0.0.1', 2222), timeout=0.1):
+            break
+    except OSError:
+        time.sleep(0.05)
+else:
+    raise AssertionError('Test sshd did not start')
+SSH = ['/usr/bin/ssh', '-F', '/dev/null', '-n', '-p', '2222', '-i', '/root/ci-test-key',
+       '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=accept-new',
+       '-o', 'UserKnownHostsFile=/root/ci-test-known-hosts', 'opusto-ci@127.0.0.1']
 request = 'deploy ghcr.io/vamaral2020/opusto@sha256:' + 'a' * 64 + ' ' + 'b' * 40
 
-def exchange(value):
+def exchange(value, remote=False):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
         listener.bind('/run/opusto-deploy.sock')
         os.chown('/run/opusto-deploy.sock', 0, __import__('grp').getgrnam('opusto-ci').gr_gid)
@@ -67,15 +84,15 @@ def exchange(value):
             connection, _ = listener.accept()
             with connection:
                 processes.append(subprocess.run(['/usr/bin/python3', '-I', '/usr/local/libexec/opusto/deploy-gateway.py', 'server'], stdin=connection, stdout=connection, stderr=subprocess.PIPE))
-        thread = threading.Thread(target=serve)
+        thread = threading.Thread(target=serve, daemon=True)
         thread.start()
-        result = run(['/usr/sbin/runuser', '-u', 'opusto-ci', '--', '/usr/bin/env', 'SSH_ORIGINAL_COMMAND=' + value, 'ENV_FILE=/attacker', 'PATH=/attacker', '/usr/bin/python3', '-I', '/usr/local/libexec/opusto/deploy-gateway.py', 'client'])
+        result = run([*SSH, value] if remote else ['/usr/sbin/runuser', '-u', 'opusto-ci', '--', '/usr/bin/env', 'SSH_ORIGINAL_COMMAND=' + value, 'ENV_FILE=/attacker', 'PATH=/attacker', '/usr/bin/python3', '-I', '/usr/local/libexec/opusto/deploy-gateway.py', 'client'])
         thread.join(timeout=30)
         assert not thread.is_alive()
     Path('/run/opusto-deploy.sock').unlink()
     return result
 
-assert exchange(request).returncode == 0
+assert exchange(request, remote=True).returncode == 0
 calls = Path('/var/lib/opusto/calls').read_text()
 assert 'pull app migrate' in calls and '--profile operations run --rm migrate' in calls
 assert '/etc/opusto/compose.prod.yaml' in calls and '/attacker' not in calls
@@ -113,6 +130,14 @@ os.chmod('/usr/local/libexec', 0o755)
 for value in ['id', 'scp -t /etc/opusto', request + '; cat /etc/opusto/.env', 'rollback']:
     result = run(['/usr/sbin/runuser', '-u', 'opusto-ci', '--', '/usr/bin/env', 'SSH_ORIGINAL_COMMAND=' + value, '/usr/bin/python3', '-I', '/usr/local/libexec/opusto/deploy-gateway.py', 'client'])
     assert result.returncode != 0 and 'fake-test-only' not in result.stdout
+for value in ['id', 'cat /etc/opusto/.env', 'scp -t /etc/opusto', 'internal-sftp']:
+    result = run([*SSH, value])
+    assert result.returncode != 0 and 'FAILED' in result.stdout
+# Direct TCP forwarding is refused by the server.
+result = run([*SSH[:-1], '-W', '127.0.0.1:22', SSH[-1]])
+assert result.returncode != 0
+sshd.terminate()
+sshd.wait(timeout=5)
 # No daemon reload/start happens in installation. Validate unit syntax offline.
 units = run(['systemd-analyze', 'verify', '/etc/systemd/system/opusto-deploy.socket', '/etc/systemd/system/opusto-deploy@.service', '/etc/systemd/system/opusto-backup.service', '/etc/systemd/system/opusto-monitor.service'])
 # Docker unit is intentionally absent from this isolated image.
