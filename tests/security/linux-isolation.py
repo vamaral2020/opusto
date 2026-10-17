@@ -134,8 +134,8 @@ for value in ['id', 'cat /etc/opusto/.env', 'scp -t /etc/opusto', 'internal-sftp
     result = run([*SSH, value])
     assert result.returncode != 0 and 'FAILED' in result.stdout
 # Direct TCP forwarding is refused by the server.
-result = run([*SSH[:-1], '-W', '127.0.0.1:22', SSH[-1]])
-assert result.returncode != 0
+result = run([*SSH[:-1], '-W', '127.0.0.1:2222', SSH[-1]])
+assert result.returncode != 0 and 'administratively prohibited' in result.stderr
 sshd.terminate()
 sshd.wait(timeout=5)
 # No daemon reload/start happens in installation. Validate unit syntax offline.

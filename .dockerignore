@@ -18,3 +18,10 @@ test-results
 
 __pycache__
 *.pyc
+
+# Local SSH/TLS credentials must never enter build contexts or caches.
+root
+root.pub
+.ssh
+*.key
+*.pem
