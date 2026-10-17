@@ -7,8 +7,12 @@ After=network-online.target docker.service
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/opt/opusto
-ExecStart=/opt/opusto/ops/backup.sh scheduled
+WorkingDirectory=/var/lib/opusto
+Environment=DEPLOY_DIR=/var/lib/opusto
+Environment=ENV_FILE=/etc/opusto/.env
+Environment=BACKUP_ENV_FILE=/etc/opusto/.env.backup
+Environment=COMPOSE_FILE=/etc/opusto/compose.prod.yaml
+ExecStart=/usr/local/libexec/opusto/backup.sh scheduled
 UMask=0077
 TimeoutStartSec=6h
 Nice=10

@@ -26,13 +26,7 @@ No PNPM 11, `pnpm_config_verify_deps_before_run=false` impede a verificação co
 - `docker compose logs`: saída de aplicação e PostgreSQL com rotação `json-file`.
 - `systemctl status opusto-monitor.timer`: execução local a cada cinco minutos.
 
-O timer de backup é instalado e ativado separadamente, somente após configurar `.env.backup` e validar a recuperação. Siga os [comandos de instalação e habilitação manual](backup-recovery.md); a integração não ativa agendamentos automaticamente. Para o monitor, instale apenas os units correspondentes:
-
-```bash
-sudo cp ops/systemd/opusto-monitor.* /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now opusto-monitor.timer
-```
+O timer de backup é instalado e ativado separadamente, somente após configurar `.env.backup` e validar a recuperação. Siga os [comandos de instalação e habilitação manual](backup-recovery.md); a integração não ativa agendamentos automaticamente. Para instalar/atualizar monitor e backup, seguir a [migração administrativa revisada](security-migration.md). Código em `/usr/local/libexec/opusto` e configuração em `/etc/opusto`, com ancestrais protegidos contra escrita CI.
 
 Conecte falhas do systemd ao mecanismo simples disponível na operação (e-mail do host, monitor da Hostinger ou serviço externo de uptime). O repositório não contrata nem ativa serviços externos.
 
@@ -43,7 +37,7 @@ Inspecione CPU/memória com `docker stats`, disco com `df -h` e volumes com `doc
 - SSH somente por chave, login root remoto desabilitado e acesso administrativo restrito.
 - UFW/nftables liberando somente portas necessárias.
 - Atualizações de segurança automáticas e reinicializações planejadas.
-- Docker socket acessível apenas ao usuário de deploy estritamente necessário; associação ao grupo Docker equivale a privilégio root.
+- Docker socket acessível somente à administração e ao executor protegido; CI não pertence ao grupo Docker. Associação ao grupo Docker equivale a privilégio root.
 - `.env` com modo `600`, backups criptografados e chaves separadas.
 - Renovação TLS testada e HSTS ativado após confirmar todos os hostnames HTTPS.
 - Revisão periódica de dependências e imagens base via pull requests.

@@ -10,6 +10,9 @@ x-app-environment: &app-environment
 
 services:
   app:
+    user: '1001:1001'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     image: ${IMAGE_REF:?IMAGE_REF is required}
     environment:
       <<: *app-environment
@@ -46,6 +49,9 @@ services:
         max-size: 10m
 
   migrate:
+    user: '1001:1001'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     image: ${IMAGE_REF:?IMAGE_REF is required}
     profiles: ['operations']
     command: ['pnpm', 'migrate']

@@ -1,3 +1,5 @@
+> Instalação/migração: seguir primeiro [isolamento administrativo](security-migration.md). Exemplos abaixo pressupõem instalação protegida. Nunca executar código root em diretório gravável por CI/deploy.
+
 # Backup Restic no Cloudflare R2 e recuperação isolada
 
 ## Escopo
@@ -8,8 +10,8 @@ A implementação não inicia/paralisa a aplicação, não modifica tabelas, nã
 
 ## Arquivos separados
 
-- `/opt/opusto/.env`: configurações existentes da aplicação e PostgreSQL; formato `KEY=value` compatível com shell, como já exigido pelo deploy.
-- `/opt/opusto/.env.backup`: somente `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, opcionalmente, `AWS_DEFAULT_REGION=auto` e `HEALTHCHECKS_PING_URL`. Use formato Docker env-file: valores literais, sem aspas, `export`, interpolação de `$` ou comentários no fim de valores. Caracteres como `$`, `#` e `=` na senha são preservados literalmente. Não copie senhas com aspas de shell ao redor.
+- `/etc/opusto/.env`: configurações existentes da aplicação e PostgreSQL; formato `KEY=value` compatível com shell, como já exigido pelo deploy.
+- `/etc/opusto/.env.backup`: somente `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, opcionalmente, `AWS_DEFAULT_REGION=auto` e `HEALTHCHECKS_PING_URL`. Use formato Docker env-file: valores literais, sem aspas, `export`, interpolação de `$` ou comentários no fim de valores. Caracteres como `$`, `#` e `=` na senha são preservados literalmente. Não copie senhas com aspas de shell ao redor.
 
 O exemplo [.env.backup.example](../.env.backup.example) usa o endpoint S3 do R2. Preserve a URL **exata** já configurada, inclusive eventual prefixo após `opusto-backups`. Se a região não estiver no arquivo, o script usa `auto`. Restrinja o token ao bucket necessário; retenção com prune também precisa de permissão de exclusão. Guarde a senha do repositório e o token em um cofre separado da VPS. Não configure lifecycle que expire objetos internos do repositório sem passar pelo Restic.
 
@@ -20,7 +22,7 @@ Opções operacionais em `.env` (defaults):
 ```dotenv
 BACKUP_REQUIRED=false
 BACKUP_STAGING_DIR=/var/backups/opusto
-BACKUP_LOCK_FILE=/run/lock/opusto-backup.lock
+BACKUP_LOCK_FILE=/var/lib/opusto/backup.lock
 BACKUP_MEDIA_VOLUME=opusto_media
 BACKUP_HOST=opusto-production
 BACKUP_RETENTION_ENABLED=false
@@ -42,7 +44,7 @@ Os logs contêm horário UTC, etapa, ID do snapshot quando validado e resultado.
 
 ## Monitoramento opcional com Healthchecks.io
 
-A variável `HEALTHCHECKS_PING_URL` já pode existir em `/opt/opusto/.env.backup`. O script agora a reconhece; não é preciso copiar ou substituir esse arquivo. A URL é um segredo: não colocá-la no Git, em comandos de teste, em logs ou em argumentos de processos. O exemplo versionado mantém o valor vazio, o que desabilita os pings. O script ignora valores herdados de `.env` ou do ambiente para essa variável e não a exporta nem encaminha aos containers.
+A variável `HEALTHCHECKS_PING_URL` já pode existir em `/etc/opusto/.env.backup`. O script agora a reconhece; não é preciso copiar ou substituir esse arquivo. A URL é um segredo: não colocá-la no Git, em comandos de teste, em logs ou em argumentos de processos. O exemplo versionado mantém o valor vazio, o que desabilita os pings. O script ignora valores herdados de `.env` ou do ambiente para essa variável e não a exporta nem encaminha aos containers.
 
 A URL deve ser a base HTTPS de ping, sem sufixos `/start` ou `/fail`. Uma barra final é normalizada. Depois de obter o lock, a execução efetiva de backup envia um **GET** para `/start`. Ao sair, depois da limpeza do staging, envia GET à URL base somente se o backup completo, a validação do snapshot e a retenção configurada tiverem terminado com sucesso. Uma falha após o início efetivo, inclusive dump parcial, validação, retenção ou sinal capturável, envia GET para `/fail` e mantém o código de saída do backup.
 
@@ -74,16 +76,8 @@ Use um checkout/release revisado em diretório separado, não substitua `.env` o
 cd /caminho/do/checkout-revisado
 sudo apt-get update
 sudo apt-get install -y jq util-linux tzdata curl ca-certificates
-sudo install -d -m 0750 /opt/opusto/ops
-sudo install -o root -g root -m 0750 ops/backup.sh /opt/opusto/ops/backup.sh
-sudo install -o root -g root -m 0750 ops/verify-backup.sh /opt/opusto/ops/verify-backup.sh
-sudo chown root:root /opt/opusto/.env.backup
-sudo chmod 0600 /opt/opusto/.env.backup
-sudo install -d -o root -g root -m 0700 /var/backups/opusto
-sudo install -m 0644 ops/systemd/opusto-backup.service /etc/systemd/system/
-sudo install -m 0644 ops/systemd/opusto-backup.timer /etc/systemd/system/
+# Instalar arquivos revisados conforme security-migration.md, por canal administrativo.
 sudo systemd-analyze verify /etc/systemd/system/opusto-backup.service /etc/systemd/system/opusto-backup.timer
-sudo systemctl daemon-reload
 ```
 
 Conferir também que `.env` está protegido e que o backup pode ser lido pelo root. Se não houver `.env.backup`, criá-lo com `sudoedit` e modo 0600 a partir do exemplo, usando os segredos **do repositório existente**. Não exibir arquivos, `env`, `docker inspect` de containers com credenciais, nem comandos de trace no terminal/journal.
@@ -91,8 +85,8 @@ Conferir também que `.env` está protegido e que o backup pode ser lido pelo ro
 Primeiro backup e verificação manuais, ainda sem retenção destrutiva:
 
 ```bash
-sudo /opt/opusto/ops/backup.sh initial-r2
-sudo /opt/opusto/ops/verify-backup.sh
+sudo systemctl start opusto-backup.service
+sudo env DEPLOY_DIR=/var/lib/opusto ENV_FILE=/etc/opusto/.env BACKUP_ENV_FILE=/etc/opusto/.env.backup COMPOSE_FILE=/etc/opusto/compose.prod.yaml /usr/local/libexec/opusto/verify-backup.sh
 sudo journalctl -u opusto-backup.service --since today --no-pager
 ```
 
@@ -101,10 +95,10 @@ A execução direta escreve no terminal; o journal da unit só contém execuçõ
 Após o ensaio, usar o ID explícito recuperado (não `latest`):
 
 ```bash
-sudo docker run --rm --env-file /opt/opusto/.env.backup \
+sudo docker run --rm --env-file /etc/opusto/.env.backup \
   -e AWS_DEFAULT_REGION=auto restic/restic:0.18.1 \
   tag --add recovery-verified SNAPSHOT_VALIDADO
-sudo docker run --rm --env-file /opt/opusto/.env.backup \
+sudo docker run --rm --env-file /etc/opusto/.env.backup \
   -e AWS_DEFAULT_REGION=auto restic/restic:0.18.1 \
   snapshots --host opusto-production --tag opusto,recovery-verified
 ```
@@ -112,7 +106,7 @@ sudo docker run --rm --env-file /opt/opusto/.env.backup \
 Adicionar tag altera o ID do snapshot; registrar o novo ID apresentado. Uma prévia legível da política, sem exclusões:
 
 ```bash
-sudo docker run --rm --env-file /opt/opusto/.env.backup \
+sudo docker run --rm --env-file /etc/opusto/.env.backup \
   -e AWS_DEFAULT_REGION=auto restic/restic:0.18.1 \
   forget --host opusto-production --tag opusto --group-by host \
   --keep-last 1 --keep-daily 7 --keep-weekly 4 --keep-monthly 3 \
@@ -134,7 +128,7 @@ O timer roda diariamente às 03:15 em `America/Araguaina`, com atraso aleatório
 
 ## Restauração em ambiente isolado
 
-Executar em máquina de recuperação autorizada, com Docker e espaço livre. Usar uma cópia protegida de `.env.backup`, sem a configuração Compose de produção. Os comandos abaixo **não usam** `opusto_media`, o banco de produção ou `/opt/opusto/compose.prod.yaml`. Não executar `stop app`, `dropdb`, `down -v` nem copiar arquivos sobre o volume de produção durante o ensaio.
+Executar em máquina de recuperação autorizada, com Docker e espaço livre. Usar uma cópia protegida de `.env.backup`, sem a configuração Compose de produção. Os comandos abaixo **não usam** `opusto_media`, o banco de produção ou `/etc/opusto/compose.prod.yaml`. Não executar `stop app`, `dropdb`, `down -v` nem copiar arquivos sobre o volume de produção durante o ensaio.
 
 1. Abrir um shell administrativo e manter os blocos seguintes nesse mesmo shell, para preservar as variáveis. Preparar um diretório vazio e listar snapshots:
 

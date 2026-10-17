@@ -115,7 +115,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done < "$BACKUP_ENV_FILE"
 
 STAGING_DIR=${BACKUP_STAGING_DIR:-/var/backups/opusto}
-LOCK_FILE=${BACKUP_LOCK_FILE:-/run/lock/opusto-backup.lock}
+LOCK_FILE=${BACKUP_LOCK_FILE:-/var/lib/opusto/backup.lock}
 RESTIC_IMAGE=${RESTIC_IMAGE:-restic/restic:0.18.1}
 RESTIC_HOST=${BACKUP_HOST:-opusto-production}
 MEDIA_VOLUME=${BACKUP_MEDIA_VOLUME:-opusto_media}

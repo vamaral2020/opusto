@@ -1,0 +1,8 @@
+# Configure branch protection to REQUIRE code owner review (this file alone does not enforce it).
+/.github/ @vamaral2020
+/ops/ @vamaral2020
+/compose*.yaml @vamaral2020
+/Dockerfile @vamaral2020
+/.dockerignore @vamaral2020
+/tests/security/ @vamaral2020
+/docs/security-migration.md @vamaral2020

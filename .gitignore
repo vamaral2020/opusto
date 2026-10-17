@@ -165,3 +165,6 @@ backups/
 # outros
 root
 root.pub
+# Python security test bytecode
+__pycache__/
+*.pyc

@@ -5,6 +5,6 @@ After=docker.service
 
 [Service]
 Type=oneshot
-EnvironmentFile=/opt/opusto/.env
-ExecStart=/opt/opusto/ops/monitor.sh
+EnvironmentFile=/etc/opusto/.env
+ExecStart=/usr/local/libexec/opusto/monitor.sh
 User=root

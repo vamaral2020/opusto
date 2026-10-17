@@ -15,6 +15,12 @@ it('deploys the app and runs migrations without removing volumes or touching med
       path.join(bin, 'docker'),
       `#!/bin/sh
 printf '%s\\n' "$*" >> "$DEPLOY_TEST_LOG"
+if [ "$1" = image ]; then
+  case "$*" in
+    *revision*) echo test-sha ;;
+    *source*) echo https://github.com/vamaral2020/opusto ;;
+  esac
+fi
 if [ "$1" = inspect ]; then printf '%s\\n' previous-image; fi
 `,
       { mode: 0o755 },
@@ -31,11 +37,11 @@ if [ "$1" = inspect ]; then printf '%s\\n' previous-image; fi
       },
     })
     const commands = readFileSync(log, 'utf8').trim().split('\n')
-    expect(commands).toHaveLength(5)
+    expect(commands).toHaveLength(7)
     expect(commands[1]).toContain('pull app migrate')
-    expect(commands[2]).toContain('up -d postgres')
-    expect(commands[3]).toContain('--profile operations run --rm migrate')
-    expect(commands[4]).toContain('up -d --no-deps app')
+    expect(commands[4]).toContain('up -d postgres')
+    expect(commands[5]).toContain('--profile operations run --rm migrate')
+    expect(commands[6]).toContain('up -d --no-deps app')
     for (const command of commands) {
       expect(command).not.toMatch(/(?:^|\s)(?:down|volume|prune|--renew-anon-volumes)(?:\s|$)/)
     }
