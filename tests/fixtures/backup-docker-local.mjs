@@ -22,6 +22,11 @@ if (args[0] === 'compose') {
     'run',
     '--network',
     'none',
+    // Keep restored files and repository directories owned by the Linux CI user.
+    '--user',
+    `${process.getuid()}:${process.getgid()}`,
+    '--env',
+    'RESTIC_CACHE_DIR=/tmp/restic-cache',
     '--mount',
     `type=bind,source=${process.env.BACKUP_INTEGRATION_REPOSITORY},target=/repository`,
     ...args

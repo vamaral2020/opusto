@@ -8,6 +8,7 @@ import path from 'node:path'
 const directory = mkdtempSync(path.join(os.tmpdir(), 'opusto-restic-integration-'))
 const docker = execFileSync('/bin/sh', ['-c', 'command -v docker'], { encoding: 'utf8' }).trim()
 const image = 'restic/restic:0.18.1'
+const resticUser = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`
 const database = `opusto-backup-test-${process.pid}`
 const restoredDatabase = `${database}-restore`
 const createdContainers: string[] = []
@@ -15,6 +16,11 @@ const repository = path.join(directory, 'repository')
 const media = path.join(directory, 'media')
 const restore = path.join(directory, 'restore')
 const bin = path.join(directory, 'bin')
+const initializationScript = path.join(directory, 'wait-for-initialization.sql')
+writeFileSync(
+  initializationScript,
+  "SELECT pg_sleep(1);\nALTER DATABASE backup_test SET app.opusto_initialized = 'true';\n",
+)
 for (const name of [repository, media, restore, bin]) mkdirSync(name, { mode: 0o700 })
 const localEnv = {
   ...process.env,
@@ -34,6 +40,10 @@ const restic = (args: string[], mounts: string[] = []) =>
     '--rm',
     '--network',
     'none',
+    '--user',
+    resticUser,
+    '--env',
+    'RESTIC_CACHE_DIR=/tmp/restic-cache',
     '--env',
     'RESTIC_REPOSITORY',
     '--env',
@@ -55,6 +65,8 @@ async function startPostgres(name: string) {
     name,
     '--tmpfs',
     '/var/lib/postgresql:rw',
+    '--mount',
+    `type=bind,source=${initializationScript},target=/docker-entrypoint-initdb.d/99-readiness.sql,readonly`,
     '--env',
     'POSTGRES_USER=backup_test',
     '--env',
@@ -66,13 +78,49 @@ async function startPostgres(name: string) {
   createdContainers.push(name)
   for (let attempt = 0; attempt < 100; attempt++) {
     if (
-      spawnSync(docker, ['exec', name, 'pg_isready', '-U', 'backup_test'], { stdio: 'ignore' })
-        .status === 0
-    )
+      // The entrypoint's temporary server accepts Unix-socket connections before
+      // POSTGRES_DB exists. Only the final server listens on TCP; execute SQL
+      // against the intended database to wait for completed initialization.
+      spawnSync(
+        docker,
+        [
+          'exec',
+          '--env',
+          'PGPASSWORD=test-only',
+          name,
+          'psql',
+          '--host=127.0.0.1',
+          '--username=backup_test',
+          '--dbname=backup_test',
+          '--no-psqlrc',
+          '--set=ON_ERROR_STOP=1',
+          '--tuples-only',
+          '--no-align',
+          '--command=SELECT 1',
+        ],
+        { stdio: 'ignore' },
+      ).status === 0
+    ) {
+      // Regression guard: readiness must never accept the temporary init server.
+      assert.equal(
+        runDocker([
+          'exec',
+          name,
+          'psql',
+          '-U',
+          'backup_test',
+          '-d',
+          'backup_test',
+          '-Atqc',
+          "SELECT current_setting('app.opusto_initialized')",
+        ]).trim(),
+        'true',
+      )
       return
+    }
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
-  throw new Error('Temporary PostgreSQL did not become ready')
+  throw new Error(`Temporary PostgreSQL did not become ready: ${runDocker(['logs', name])}`)
 }
 
 try {

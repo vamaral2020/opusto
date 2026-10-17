@@ -29,12 +29,12 @@ function fixture(scenario = '', retention = false) {
     writeFileSync(
       path.join(bin, 'flock'),
       `#!/usr/bin/env python3
-  import fcntl, sys
-  try:
-      fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
-  except BlockingIOError:
-      sys.exit(1)
-  `,
+import fcntl, sys
+try:
+    fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    sys.exit(1)
+`,
       { mode: 0o755 },
     )
   }

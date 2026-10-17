@@ -156,9 +156,13 @@ sudo docker run -d --name "$RESTORE_DB" --network none \
   --tmpfs /var/lib/postgresql:rw \
   -e POSTGRES_USER=opusto_restore -e POSTGRES_DB=opusto_restore \
   -e POSTGRES_PASSWORD="$RESTORE_PASSWORD" postgres:18.6-alpine
-# Repetir até informar "accepting connections" antes de prosseguir:
-sudo docker exec "$RESTORE_DB" pg_isready -U opusto_restore -d opusto_restore
+# Repetir até retornar 1 com exit 0; exige banco criado e servidor TCP final:
+sudo docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$RESTORE_DB" psql \
+  --host=127.0.0.1 --username=opusto_restore --dbname=opusto_restore \
+  --no-psqlrc --set=ON_ERROR_STOP=1 --tuples-only --no-align --command='SELECT 1'
 ```
+
+Não usar somente `pg_isready`: a imagem oficial inicia um servidor temporário por socket durante a preparação, que pode aceitar conexões antes de criar o banco. A consulta TCP ao banco escolhido aguarda a inicialização completa.
 
 A senha acima é descartável para o container isolado, não uma credencial de produção. Não ativar trace. O tmpfs usa RAM e não é adequado a bases maiores que a memória disponível: nesses casos, fazer o ensaio em host separado com bind de um diretório vazio e exclusivo de recuperação em `/var/lib/postgresql`, nunca o volume de produção. Encerrar esse container elimina seu banco temporário; conservar o snapshot remoto e o diretório restaurado até validar o ensaio.
 
