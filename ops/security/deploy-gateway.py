@@ -55,7 +55,7 @@ def execute(request):
         # Never return Docker/Compose output to the CI identity (it can contain secrets).
         print('OpusTO deploy accepted: ' + revision, file=sys.stderr, flush=True)
         result = subprocess.run(['/bin/sh', str(LIB / 'deploy.sh'), image, revision],
-                                cwd=STATE, env=ENV, stdout=subprocess.DEVNULL,
+                                cwd=STATE, env=ENV, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL, timeout=1200, check=False)
         print('OpusTO deploy ' + ('completed' if result.returncode == 0 else 'failed'), file=sys.stderr, flush=True)
         return result.returncode == 0
@@ -73,7 +73,13 @@ def main():
                 connection.connect('/run/opusto-deploy.sock')
                 connection.sendall(request.rstrip('\n').encode('ascii') + b'\n')
                 connection.shutdown(socket.SHUT_WR)
-                ok = connection.recv(128) == b'OK\n'
+                response = b''
+                while not response.endswith(b'\n') and len(response) < 128:
+                    chunk = connection.recv(128 - len(response))
+                    if not chunk:
+                        break
+                    response += chunk
+                ok = response == b'OK\n'
         elif sys.argv[1] == 'server' and os.getuid() == 0:
             # systemd Accept=yes supplies one connected socket on stdin.
             with socket.fromfd(0, socket.AF_UNIX, socket.SOCK_STREAM) as connection:

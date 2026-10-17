@@ -48,7 +48,7 @@ for setting in ['disableforwarding yes', 'permittty no', 'permituserrc no', 'pas
     assert setting in config.stdout, setting
 # Real IPC, forced command parser and privileged executor with isolated fake tools.
 for name, content in {
-    'docker': '#!/bin/sh\necho "$*" >> /var/lib/opusto/calls\ncase "$*" in *revision*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;; *source*) echo https://github.com/vamaral2020/opusto;; inspect*) echo ghcr.io/vamaral2020/opusto@sha256:' + 'c' * 64 + ';; esac\n',
+    'docker': '#!/bin/sh\n[ /dev/null -ef /proc/self/fd/0 ] || exit 99\necho "$*" >> /var/lib/opusto/calls\ncase "$*" in *revision*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;; *source*) echo https://github.com/vamaral2020/opusto;; inspect*) echo ghcr.io/vamaral2020/opusto@sha256:' + 'c' * 64 + ';; esac\n',
     'curl': '#!/bin/sh\nexit 0\n',
 }.items():
     tool = Path('/usr/bin') / name
@@ -93,14 +93,14 @@ assert exchange(request).returncode != 0
 failed_calls = Path('/var/lib/opusto/calls').read_text()[len(calls):]
 assert failed_calls.count('up -d --no-deps app') == 2
 # Failed migration never starts the new application and never reports success.
-Path('/usr/bin/docker').write_text('#!/bin/sh\necho "$*" >> /var/lib/opusto/calls\ncase "$*" in *revision*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;; *source*) echo https://github.com/vamaral2020/opusto;; *"run --rm migrate"*) echo fake-secret >&2; exit 1;; esac\n')
+Path('/usr/bin/docker').write_text('#!/bin/sh\n[ /dev/null -ef /proc/self/fd/0 ] || exit 99\necho "$*" >> /var/lib/opusto/calls\ncase "$*" in *revision*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;; *source*) echo https://github.com/vamaral2020/opusto;; *"run --rm migrate"*) echo fake-secret >&2; exit 1;; esac\n')
 before = Path('/var/lib/opusto/calls').read_text()
 result = exchange(request)
 assert result.returncode != 0 and 'fake-secret' not in result.stdout + result.stderr
 assert 'up -d --no-deps app' not in Path('/var/lib/opusto/calls').read_text()[len(before):]
 calls = Path('/var/lib/opusto/calls').read_text()
 # Source/revision mismatch fails before migrations or application replacement.
-Path('/usr/bin/docker').write_text('#!/bin/sh\necho "$*" >> /var/lib/opusto/calls\ncase "$*" in *revision*) echo wrong-revision;; *source*) echo https://github.com/vamaral2020/opusto;; esac\n')
+Path('/usr/bin/docker').write_text('#!/bin/sh\n[ /dev/null -ef /proc/self/fd/0 ] || exit 99\necho "$*" >> /var/lib/opusto/calls\ncase "$*" in *revision*) echo wrong-revision;; *source*) echo https://github.com/vamaral2020/opusto;; esac\n')
 before = Path('/var/lib/opusto/calls').read_text()
 assert exchange(request).returncode != 0
 assert 'run --rm migrate' not in Path('/var/lib/opusto/calls').read_text()[len(before):]
