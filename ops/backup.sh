@@ -11,6 +11,8 @@ COMPOSE_FILE=${COMPOSE_FILE:-$DEPLOY_DIR/compose.prod.yaml}
 MODE=${1:-scheduled}
 phase=configuration
 run_dir=
+healthchecks_active=false
+backup_complete=false
 
 log() {
   printf '%s [opusto-backup] %s\n' "$(date -u +%FT%TZ)" "$1"
@@ -21,11 +23,46 @@ fail() {
   exit 1
 }
 
+healthchecks_ping() {
+  local event=$1 suffix='' url http_code
+  [[ -n "${HEALTHCHECKS_PING_URL:-}" ]] || return 0
+  case "$event" in
+    start) suffix=/start ;;
+    fail) suffix=/fail ;;
+  esac
+  if [[ "$HEALTHCHECKS_PING_URL" != https://* || "$HEALTHCHECKS_PING_URL" =~ [[:space:][:cntrl:]] ]]; then
+    log 'WARNING: Invalid Healthchecks configuration; notification skipped.' >&2 || true
+    return 0
+  fi
+  url="${HEALTHCHECKS_PING_URL%/}$suffix"
+  # Keep the confidential URL off argv and ignore user curlrc files. Escape the
+  # curl config value; control characters above are rejected to prevent injection.
+  url=${url//\\/\\\\}
+  url=${url//\"/\\\"}
+  if ! http_code=$(printf 'url = "%s"\n' "$url" |
+    curl --disable --config - --request GET --silent --show-error --fail \
+      --connect-timeout 2 --max-time 5 --retry 0 --proto '=https' \
+      --output /dev/null --write-out '%{http_code}' 2>/dev/null) || [[ "$http_code" != 2?? ]]; then
+    log "WARNING: Healthchecks communication failed ($event); backup result unchanged." >&2 || true
+  fi
+  return 0
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
   if [[ -n "$run_dir" ]]; then
-    rm -rf -- "$run_dir" >/dev/null 2>&1 || status=1
+    if ! rm -rf -- "$run_dir" >/dev/null 2>&1; then
+      # A cleanup failure must not replace the original backup error code.
+      [[ $status -ne 0 ]] || status=1
+    fi
+  fi
+  if [[ "$healthchecks_active" == true ]]; then
+    if [[ $status -eq 0 && "$backup_complete" == true ]]; then
+      healthchecks_ping success
+    else
+      healthchecks_ping fail
+    fi
   fi
   if [[ $status -ne 0 ]]; then
     log "FAILED: $phase (exit $status)." >&2
@@ -58,7 +95,7 @@ set +x
 
 # Backup credentials use Docker env-file syntax, NOT shell evaluation/interpolation.
 # Clear inherited/application credentials so missing entries cannot silently fall back.
-unset RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
+unset RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION HEALTHCHECKS_PING_URL
 while IFS= read -r line || [[ -n "$line" ]]; do
   line=${line%$'\r'}
   [[ "$line" =~ ^[[:space:]]*$ || "$line" =~ ^[[:space:]]*# ]] && continue
@@ -69,14 +106,13 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     RESTIC_REPOSITORY|RESTIC_PASSWORD|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_DEFAULT_REGION)
       export "$key=$value"
       ;;
+    HEALTHCHECKS_PING_URL)
+      # Do not export this secret or forward it to Docker containers.
+      HEALTHCHECKS_PING_URL=$value
+      ;;
     *) fail 'Unsupported entry in backup credentials file.' ;;
   esac
 done < "$BACKUP_ENV_FILE"
-for key in RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
-  [[ -n "${!key:-}" ]] || fail "Required backup setting missing: $key."
-done
-[[ "$RESTIC_REPOSITORY" == s3:https://* ]] || fail 'Expected an HTTPS S3-compatible repository.'
-export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-auto}
 
 STAGING_DIR=${BACKUP_STAGING_DIR:-/var/backups/opusto}
 LOCK_FILE=${BACKUP_LOCK_FILE:-/run/lock/opusto-backup.lock}
@@ -95,6 +131,18 @@ if ! flock -n 9; then
   exit 75
 fi
 # Do not unlink the lock file: all invocations must lock the same inode.
+
+# A rejected concurrent invocation must not disturb the active job's status.
+if [[ "$MODE" != --verify ]]; then
+  healthchecks_active=true
+  healthchecks_ping start
+fi
+
+for key in RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+  [[ -n "${!key:-}" ]] || fail "Required backup setting missing: $key."
+done
+[[ "$RESTIC_REPOSITORY" == s3:https://* ]] || fail 'Expected an HTTPS S3-compatible repository.'
+export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-auto}
 
 restic() {
   docker run --rm \
@@ -181,3 +229,4 @@ else
   retention --dry-run >/dev/null 2>&1
 fi
 log 'Encrypted backup completed.'
+backup_complete=true

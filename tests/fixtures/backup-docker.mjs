@@ -6,6 +6,7 @@ appendFileSync(
   process.env.BACKUP_TEST_LOG,
   `${JSON.stringify({
     args,
+    healthchecksURL: process.env.HEALTHCHECKS_PING_URL,
     credentials: Object.fromEntries(
       [
         'RESTIC_REPOSITORY',
