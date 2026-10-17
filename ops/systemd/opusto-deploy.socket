@@ -1,0 +1,13 @@
+[Unit]
+Description=Restricted OpusTO deploy request socket
+
+[Socket]
+ListenStream=/run/opusto-deploy.sock
+SocketUser=root
+SocketGroup=opusto-ci
+SocketMode=0660
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

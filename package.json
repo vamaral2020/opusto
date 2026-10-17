@@ -27,6 +27,8 @@
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run",
     "typecheck": "tsc --noEmit",
     "test:cms": "cross-env NODE_OPTIONS=--no-deprecation NODE_ENV=test PAYLOAD_DISABLE_PUSH=true tsx tests/integration/cms-images.ts",
+    "test:security:linux": "docker build -f tests/security/Dockerfile -t opusto-security-test .",
+    "test:security": "python3 -m unittest discover -s tests/security -v",
     "test:backup": "tsx tests/integration/backup-restic.ts"
   },
   "dependencies": {

@@ -44,6 +44,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm test:security
+      - run: pnpm test:security:linux
       - name: Rehearse backup and recovery in disposable containers
         run: pnpm test:backup
       - name: Validate media migrations against existing records

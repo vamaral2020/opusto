@@ -1,0 +1,23 @@
+[Unit]
+Description=Restricted OpusTO deployment executor
+Requires=docker.service
+After=docker.service
+CollectMode=inactive-or-failed
+
+[Service]
+Type=exec
+User=root
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/opusto/deploy-gateway.py server
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+WorkingDirectory=/var/lib/opusto
+UMask=0077
+TimeoutStartSec=21min
+RuntimeMaxSec=21min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/opusto /run/lock /var/backups/opusto
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes

@@ -4,10 +4,10 @@ set +x
 set -euo pipefail
 umask 077
 
-DEPLOY_DIR=${DEPLOY_DIR:-/opt/opusto}
-ENV_FILE=${ENV_FILE:-$DEPLOY_DIR/.env}
-BACKUP_ENV_FILE=${BACKUP_ENV_FILE:-$DEPLOY_DIR/.env.backup}
-COMPOSE_FILE=${COMPOSE_FILE:-$DEPLOY_DIR/compose.prod.yaml}
+DEPLOY_DIR=${DEPLOY_DIR:-/var/lib/opusto}
+ENV_FILE=${ENV_FILE:-/etc/opusto/.env}
+BACKUP_ENV_FILE=${BACKUP_ENV_FILE:-/etc/opusto/.env.backup}
+COMPOSE_FILE=${COMPOSE_FILE:-/etc/opusto/compose.prod.yaml}
 MODE=${1:-scheduled}
 phase=configuration
 run_dir=
@@ -115,7 +115,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done < "$BACKUP_ENV_FILE"
 
 STAGING_DIR=${BACKUP_STAGING_DIR:-/var/backups/opusto}
-LOCK_FILE=${BACKUP_LOCK_FILE:-/run/lock/opusto-backup.lock}
+LOCK_FILE=${BACKUP_LOCK_FILE:-/var/lib/opusto/backup.lock}
 RESTIC_IMAGE=${RESTIC_IMAGE:-restic/restic:0.18.1}
 RESTIC_HOST=${BACKUP_HOST:-opusto-production}
 MEDIA_VOLUME=${BACKUP_MEDIA_VOLUME:-opusto_media}
