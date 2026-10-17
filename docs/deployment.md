@@ -13,7 +13,7 @@ install -m 600 .env.example .env
 chmod 750 ops/*.sh
 ```
 
-Preencha `.env` com domínio confirmado, segredo aleatório longo, credenciais PostgreSQL, referência de imagem e backup. Não exponha `5432`. Para pacote GHCR privado, faça uma vez `docker login ghcr.io` usando um token somente `read:packages`.
+Preencha `.env` com domínio confirmado, segredo aleatório longo, credenciais PostgreSQL, referência de imagem. As credenciais Restic/R2 ficam separadas em `.env.backup`, com modo 600; consulte [backup e recuperação](backup-recovery.md). Não exponha `5432`. Para pacote GHCR privado, faça uma vez `docker login ghcr.io` usando um token somente `read:packages`.
 
 ## Primeiro deploy
 

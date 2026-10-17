@@ -1,45 +1,183 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env bash
+# Never trace credentials, including when invoked with bash -x.
+set +x
+set -euo pipefail
+umask 077
 
-LABEL=${1:-scheduled}
 DEPLOY_DIR=${DEPLOY_DIR:-/opt/opusto}
 ENV_FILE=${ENV_FILE:-$DEPLOY_DIR/.env}
+BACKUP_ENV_FILE=${BACKUP_ENV_FILE:-$DEPLOY_DIR/.env.backup}
 COMPOSE_FILE=${COMPOSE_FILE:-$DEPLOY_DIR/compose.prod.yaml}
-STAGING_DIR=${BACKUP_STAGING_DIR:-/var/backups/opusto}
-RESTIC_IMAGE=${RESTIC_IMAGE:-restic/restic:0.18.1}
-timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-dump_file="$STAGING_DIR/postgres-$timestamp.dump"
+MODE=${1:-scheduled}
+phase=configuration
+run_dir=
 
-cd "$DEPLOY_DIR"
-test -r "$ENV_FILE"
-mkdir -p "$STAGING_DIR"
+log() {
+  printf '%s [opusto-backup] %s\n' "$(date -u +%FT%TZ)" "$1"
+}
 
-set -a
-. "$ENV_FILE"
-set +a
+fail() {
+  log "$1" >&2
+  exit 1
+}
 
 cleanup() {
-  rm -f "$dump_file"
+  local status=$?
+  trap - EXIT
+  if [[ -n "$run_dir" ]]; then
+    rm -rf -- "$run_dir" >/dev/null 2>&1 || status=1
+  fi
+  if [[ $status -ne 0 ]]; then
+    log "FAILED: $phase (exit $status)." >&2
+  fi
+  exit "$status"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
+[[ $# -le 1 ]] || fail 'Usage: backup.sh [scheduled|predeploy|LABEL|--verify]'
+if [[ "$MODE" != --verify && ! "$MODE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+  fail 'Invalid backup label.'
+fi
+for command in docker flock jq; do
+  command -v "$command" >/dev/null 2>&1 || fail "Required command unavailable: $command."
+done
+[[ -r "$ENV_FILE" && -f "$ENV_FILE" ]] || fail 'Application configuration unavailable.'
+[[ -r "$BACKUP_ENV_FILE" && -f "$BACKUP_ENV_FILE" ]] || fail 'Backup credentials file unavailable.'
+cd "$DEPLOY_DIR" 2>/dev/null
+
+# Application .env follows the existing deploy script's trusted shell KEY=value format.
+set -a
+# shellcheck source=/dev/null
+if ! . "$ENV_FILE" >/dev/null 2>&1; then
+  fail 'Could not load application configuration.'
+fi
+set +a
+set +x
+
+# Backup credentials use Docker env-file syntax, NOT shell evaluation/interpolation.
+# Clear inherited/application credentials so missing entries cannot silently fall back.
+unset RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line=${line%$'\r'}
+  [[ "$line" =~ ^[[:space:]]*$ || "$line" =~ ^[[:space:]]*# ]] && continue
+  [[ "$line" == *=* ]] || fail 'Invalid entry in backup credentials file.'
+  key=${line%%=*}
+  value=${line#*=}
+  case "$key" in
+    RESTIC_REPOSITORY|RESTIC_PASSWORD|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_DEFAULT_REGION)
+      export "$key=$value"
+      ;;
+    *) fail 'Unsupported entry in backup credentials file.' ;;
+  esac
+done < "$BACKUP_ENV_FILE"
+for key in RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+  [[ -n "${!key:-}" ]] || fail "Required backup setting missing: $key."
+done
+[[ "$RESTIC_REPOSITORY" == s3:https://* ]] || fail 'Expected an HTTPS S3-compatible repository.'
+export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-auto}
+
+STAGING_DIR=${BACKUP_STAGING_DIR:-/var/backups/opusto}
+LOCK_FILE=${BACKUP_LOCK_FILE:-/run/lock/opusto-backup.lock}
+RESTIC_IMAGE=${RESTIC_IMAGE:-restic/restic:0.18.1}
+RESTIC_HOST=${BACKUP_HOST:-opusto-production}
+MEDIA_VOLUME=${BACKUP_MEDIA_VOLUME:-opusto_media}
+RETENTION_ENABLED=${BACKUP_RETENTION_ENABLED:-false}
+[[ "$RETENTION_ENABLED" == true || "$RETENTION_ENABLED" == false ]] || fail 'Invalid retention setting.'
+[[ "$STAGING_DIR" == /* && "$STAGING_DIR" != / ]] || fail 'Staging directory must be an absolute dedicated path.'
+
+phase=lock
+mkdir -p -- "$(dirname "$LOCK_FILE")" 2>/dev/null
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  log 'Another backup or verification is running.' >&2
+  exit 75
+fi
+# Do not unlink the lock file: all invocations must lock the same inode.
+
+restic() {
+  docker run --rm \
+    --env RESTIC_REPOSITORY --env RESTIC_PASSWORD \
+    --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY --env AWS_DEFAULT_REGION \
+    "$RESTIC_IMAGE" "$@"
+}
+
+if [[ "$MODE" == --verify ]]; then
+  phase=verification
+  log 'Checking repository and sampling 5% of stored data.'
+  restic check --read-data-subset=5% >/dev/null 2>&1
+  restic snapshots --json --host "$RESTIC_HOST" --tag opusto --latest 1 2>/dev/null |
+    jq -e 'length > 0' >/dev/null 2>&1
+  log 'Repository verification completed; a full restore rehearsal is still required.'
+  exit 0
+fi
+
+[[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]] || fail 'PostgreSQL configuration missing.'
+[[ -r "$COMPOSE_FILE" ]] || fail 'Compose configuration unavailable.'
+phase=staging
+mkdir -p -- "$STAGING_DIR" 2>/dev/null
+run_dir=$(mktemp -d "$STAGING_DIR/run.XXXXXXXX")
+dump_file="$run_dir/postgres.dump"
+
+phase=dump
+log 'Creating PostgreSQL custom-format dump.'
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres \
-  pg_dump --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --format=custom > "$dump_file"
+  pg_dump --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --format=custom \
+  > "$dump_file" 2>/dev/null
+[[ -s "$dump_file" ]] || fail 'PostgreSQL dump is empty.'
+[[ "$(head -c 5 "$dump_file")" == PGDMP ]] || fail 'PostgreSQL dump is not a custom archive.'
 
+phase=dump-validation
+# Decode the entire archive to /dev/null, without connecting to or modifying any database.
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres \
+  pg_restore --file=/dev/null < "$dump_file" >/dev/null 2>&1
+
+phase=media-validation
+# A missing named volume must fail, rather than silently creating an empty volume.
+docker volume inspect "$MEDIA_VOLUME" >/dev/null 2>&1
+
+phase=upload
+log 'Uploading database and read-only media in one encrypted snapshot.'
 docker run --rm \
-  --env-file "$ENV_FILE" \
-  --volume "$STAGING_DIR:/backup:ro" \
-  --volume opusto_media:/media:ro \
-  "$RESTIC_IMAGE" backup \
-  --host opusto-production \
-  --tag "$LABEL" \
-  "/backup/$(basename "$dump_file")" /media
+  --env RESTIC_REPOSITORY --env RESTIC_PASSWORD \
+  --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY --env AWS_DEFAULT_REGION \
+  --mount "type=bind,source=$run_dir,target=/backup,readonly" \
+  --mount "type=volume,source=$MEDIA_VOLUME,target=/media,readonly" \
+  "$RESTIC_IMAGE" backup --json --host "$RESTIC_HOST" --tag opusto --tag "$MODE" \
+  --group-by host /backup/postgres.dump /media > "$run_dir/result.json" 2>/dev/null
+snapshot_id=$(jq -er 'select(.message_type == "summary") | .snapshot_id | select(test("^[0-9a-f]{64}$"))' "$run_dir/result.json" 2>/dev/null)
 
-docker run --rm --env-file "$ENV_FILE" "$RESTIC_IMAGE" forget \
-  --host opusto-production \
-  --keep-daily 7 \
-  --keep-weekly 4 \
-  --keep-monthly 3 \
-  --prune
+phase=snapshot-validation
+restic cat snapshot "$snapshot_id" > "$run_dir/snapshot.json" 2>/dev/null
+jq -e --arg host "$RESTIC_HOST" '
+  .hostname == $host and
+  (.paths | sort) == (["/backup/postgres.dump", "/media"] | sort) and
+  (.tags | index("opusto")) != null
+' "$run_dir/snapshot.json" >/dev/null 2>&1
+restic check >/dev/null 2>&1
+log "Snapshot validated: $snapshot_id."
 
-printf 'Encrypted off-site backup completed at %s.\n' "$timestamp"
+phase=retention
+retention() {
+  restic forget --host "$RESTIC_HOST" --tag opusto --group-by host \
+    --keep-last 1 --keep-daily 7 --keep-weekly 4 --keep-monthly 3 \
+    --keep-tag recovery-verified "$@"
+}
+if [[ "$RETENTION_ENABLED" == true ]]; then
+  # Require at least one explicitly restore-tested baseline, and keep it indefinitely.
+  restic snapshots --json --host "$RESTIC_HOST" --tag opusto,recovery-verified \
+    > "$run_dir/verified.json" 2>/dev/null
+  jq -e --arg host "$RESTIC_HOST" 'any(.[];
+    .hostname == $host and
+    (.paths | sort) == (["/backup/postgres.dump", "/media"] | sort) and
+    (.tags | index("opusto")) != null and (.tags | index("recovery-verified")) != null
+  )' "$run_dir/verified.json" >/dev/null 2>&1 || fail 'Retention blocked: no restore-verified baseline. Follow the recovery runbook.'
+  log 'Applying retention: 7 daily, 4 weekly, 3 monthly; verified baselines retained.'
+  retention --prune >/dev/null 2>&1
+  restic check >/dev/null 2>&1
+else
+  log 'Retention dry-run only; no snapshot or pack will be removed.'
+  retention --dry-run >/dev/null 2>&1
+fi
+log 'Encrypted backup completed.'

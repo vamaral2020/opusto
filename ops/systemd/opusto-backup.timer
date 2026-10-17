@@ -1,10 +1,11 @@
 [Unit]
-Description=Run the Opus TO backup every day
+Description=Run the Opus TO backup daily, catching up after downtime
 
 [Timer]
-OnCalendar=*-*-* 03:15:00 America/Sao_Paulo
+OnCalendar=*-*-* 03:15:00 America/Araguaina
 Persistent=true
 RandomizedDelaySec=20m
+Unit=opusto-backup.service
 
 [Install]
 WantedBy=timers.target
