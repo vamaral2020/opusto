@@ -1,9 +1,18 @@
 [Unit]
-Description=Opus TO encrypted off-site backup
+Description=Opus TO encrypted PostgreSQL and media backup to Cloudflare R2
+Wants=network-online.target
 Requires=docker.service
-After=docker.service
+After=network-online.target docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/opusto/ops/backup.sh scheduled
 User=root
+WorkingDirectory=/opt/opusto
+ExecStart=/opt/opusto/ops/backup.sh scheduled
+UMask=0077
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal

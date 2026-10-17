@@ -26,17 +26,17 @@ No PNPM 11, `pnpm_config_verify_deps_before_run=false` impede a verificação co
 - `docker compose logs`: saída de aplicação e PostgreSQL com rotação `json-file`.
 - `systemctl status opusto-monitor.timer`: execução local a cada cinco minutos.
 
-Instale os units em `/etc/systemd/system`, recarregue e ative:
+O timer de backup é instalado e ativado separadamente, somente após configurar `.env.backup` e validar a recuperação. Siga os [comandos de instalação e habilitação manual](backup-recovery.md); a integração não ativa agendamentos automaticamente. Para o monitor, instale apenas os units correspondentes:
 
 ```bash
-sudo cp ops/systemd/opusto-* /etc/systemd/system/
+sudo cp ops/systemd/opusto-monitor.* /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now opusto-monitor.timer opusto-backup.timer
+sudo systemctl enable --now opusto-monitor.timer
 ```
 
-Conecte falhas do systemd ao mecanismo simples disponível na operação (e-mail do host, monitor da Vultr ou serviço externo de uptime). O repositório não contrata nem ativa serviços externos.
+Conecte falhas do systemd ao mecanismo simples disponível na operação (e-mail do host, monitor da Hostinger ou serviço externo de uptime). O repositório não contrata nem ativa serviços externos.
 
-Inspecione CPU/memória com `docker stats`, disco com `df -h` e volumes com `docker system df -v`. Defina alertas do provedor para CPU, memória, disco e indisponibilidade quando a conta Vultr estiver disponível.
+Inspecione CPU/memória com `docker stats`, disco com `df -h` e volumes com `docker system df -v`. Defina alertas do provedor para CPU, memória, disco e indisponibilidade quando a conta Hostinger estiver disponível.
 
 ## Hardening
 
