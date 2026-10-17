@@ -9,7 +9,7 @@ A implementação não inicia/paralisa a aplicação, não modifica tabelas, nã
 ## Arquivos separados
 
 - `/opt/opusto/.env`: configurações existentes da aplicação e PostgreSQL; formato `KEY=value` compatível com shell, como já exigido pelo deploy.
-- `/opt/opusto/.env.backup`: somente `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, opcionalmente, `AWS_DEFAULT_REGION=auto`. Use formato Docker env-file: valores literais, sem aspas, `export`, interpolação de `$` ou comentários no fim de valores. Caracteres como `$`, `#` e `=` na senha são preservados literalmente. Não copie senhas com aspas de shell ao redor.
+- `/opt/opusto/.env.backup`: somente `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, opcionalmente, `AWS_DEFAULT_REGION=auto` e `HEALTHCHECKS_PING_URL`. Use formato Docker env-file: valores literais, sem aspas, `export`, interpolação de `$` ou comentários no fim de valores. Caracteres como `$`, `#` e `=` na senha são preservados literalmente. Não copie senhas com aspas de shell ao redor.
 
 O exemplo [.env.backup.example](../.env.backup.example) usa o endpoint S3 do R2. Preserve a URL **exata** já configurada, inclusive eventual prefixo após `opusto-backups`. Se a região não estiver no arquivo, o script usa `auto`. Restrinja o token ao bucket necessário; retenção com prune também precisa de permissão de exclusão. Guarde a senha do repositório e o token em um cofre separado da VPS. Não configure lifecycle que expire objetos internos do repositório sem passar pelo Restic.
 
@@ -40,6 +40,22 @@ RESTIC_IMAGE=restic/restic:0.18.1
 
 Os logs contêm horário UTC, etapa, ID do snapshot quando validado e resultado. Saída bruta de Docker/PostgreSQL/Restic é suprimida para não vazar credenciais em erros de ferramentas; não há log com `set -x` nem argumentos contendo valores de segredos. Consulte a etapa registrada para investigar de forma controlada. Falha de retenção deixa o job com erro mesmo se o snapshot tiver sido enviado.
 
+## Monitoramento opcional com Healthchecks.io
+
+A variável `HEALTHCHECKS_PING_URL` já pode existir em `/opt/opusto/.env.backup`. O script agora a reconhece; não é preciso copiar ou substituir esse arquivo. A URL é um segredo: não colocá-la no Git, em comandos de teste, em logs ou em argumentos de processos. O exemplo versionado mantém o valor vazio, o que desabilita os pings. O script ignora valores herdados de `.env` ou do ambiente para essa variável e não a exporta nem encaminha aos containers.
+
+A URL deve ser a base HTTPS de ping, sem sufixos `/start` ou `/fail`. Uma barra final é normalizada. Depois de obter o lock, a execução efetiva de backup envia um **GET** para `/start`. Ao sair, depois da limpeza do staging, envia GET à URL base somente se o backup completo, a validação do snapshot e a retenção configurada tiverem terminado com sucesso. Uma falha após o início efetivo, inclusive dump parcial, validação, retenção ou sinal capturável, envia GET para `/fail` e mantém o código de saída do backup.
+
+Execuções recusadas pelo `flock`, verificações `--verify` (bem-sucedidas ou não) e falhas de preparação anteriores à aquisição do lock **não enviam pings**. Assim, uma tentativa concorrente não sobrescreve o estado do job ativo. Falhas que impedem o script de chegar ao início, assim como SIGKILL/desligamento abrupto, devem ser detectadas pelo atraso/ausência de pings configurado no Healthchecks.
+
+Cada chamada usa curl com timeout de conexão de 2 segundos, limite total de 5 segundos e sem retries. Uma indisponibilidade pode acrescentar até 10 segundos ao job (ping inicial e final). HTTP não 2xx, timeout, curl ausente ou outro erro de transporte produzem apenas um aviso genérico no stderr/journal; não fazem o backup bem-sucedido falhar e não substituem um código de erro existente. Uma configuração inválida também é avisada sem mostrar seu valor. O script não segue redirects e mantém a verificação TLS.
+
+A URL é passada ao curl por configuração em stdin, com escape de aspas/barras invertidas e rejeição de caracteres de controle/espaços. Não aparece em argv, na saída bruta do curl ou no trace; `.curlrc` do usuário é desconsiderado. Nenhum dump, credencial, corpo de logs ou conteúdo de mídia é enviado ao Healthchecks.
+
+Para aplicar a integração, após revisar e aprovar o PR, instalar a nova versão de `ops/backup.sh` conforme os comandos abaixo. Não recriar `.env.backup`, alterar credenciais, reiniciar o banco ou habilitar novamente um timer que já esteja ativo. O próximo backup usará a variável existente. Os testes deste repositório usam URLs fictícias e um servidor HTTPS em loopback, nunca o endpoint real da VPS.
+
+No painel do Healthchecks.io, conferir manualmente a periodicidade diária e uma tolerância que cubra o horário do timer (03:15, America/Araguaina), seu atraso aleatório de até 20 minutos e a duração esperada do backup. O `/start` permite detectar jobs demorados; dimensionar também o grace time para a duração máxima aceitável. Uma execução adicional manual ou pré-deploy usa o mesmo check, pois o mesmo script envia pings para qualquer backup efetivo. `--verify` não altera o check diário. Nenhuma configuração do Healthchecks ou agendamento é alterada automaticamente por este PR.
+
 ## Retenção: 7 diários, 4 semanais, 3 mensais
 
 Por padrão `BACKUP_RETENTION_ENABLED=false`: o script executa `forget --dry-run`, sem `prune`. **Nenhum snapshot é removido antes do ensaio de recuperação e da habilitação explícita.**
@@ -57,7 +73,7 @@ Use um checkout/release revisado em diretório separado, não substitua `.env` o
 ```bash
 cd /caminho/do/checkout-revisado
 sudo apt-get update
-sudo apt-get install -y jq util-linux tzdata
+sudo apt-get install -y jq util-linux tzdata curl ca-certificates
 sudo install -d -m 0750 /opt/opusto/ops
 sudo install -o root -g root -m 0750 ops/backup.sh /opt/opusto/ops/backup.sh
 sudo install -o root -g root -m 0750 ops/verify-backup.sh /opt/opusto/ops/verify-backup.sh
@@ -204,12 +220,14 @@ pnpm lint
 pnpm typecheck
 ```
 
-`pnpm test` inclui cenários com Docker simulado: sucesso, credenciais ausentes, arquivo de configuração ausente, dump com erro/vazio/inválido, volume ausente, upload com falha/parcial, metadados inválidos, check com falha, retenção desabilitada/habilitada/com erro, verificação e concorrência. Os testes conferem que valores literais não são executados nem aparecem nos logs e que o staging é limpo.
+`pnpm test` inclui cenários com Docker simulado: sucesso, credenciais ausentes, arquivo de configuração ausente, dump com erro/vazio/inválido, volume ausente, upload com falha/parcial, metadados inválidos, check com falha, retenção desabilitada/habilitada/com erro, verificação, concorrência e pings de início/sucesso/falha. Os testes conferem que valores literais não são executados nem aparecem nos logs e que o staging é limpo.
 
-`pnpm test:backup` requer Docker, Bash, jq e flock (no macOS há um adaptador de teste usando Python 3). Usa PostgreSQL 18.6 e Restic 0.18.1 reais, contêineres exclusivos sem rede/portas e diretórios temporários. Um adaptador encaminha somente dump/validação para o banco de teste e troca o endpoint por um repositório **local**. Confere restauração de registros e bytes de mídia, retenção real com snapshots históricos, proteção de baseline e escopo por host. Os recursos de teste são removidos no `finally`. Não lê credenciais reais, não conecta ao R2 e não monta volumes existentes. O CI executa esse ensaio antes dos testes da aplicação.
+`pnpm test:backup` requer Docker, Bash, jq e flock (no macOS há um adaptador de teste usando Python 3). Usa PostgreSQL 18.6 e Restic 0.18.1 reais, contêineres exclusivos sem rede/portas e diretórios temporários. Um adaptador encaminha somente dump/validação para o banco de teste e troca o endpoint por um repositório **local**. Confere restauração de registros e bytes de mídia, retenção real com snapshots históricos, proteção de baseline e escopo por host. Também usa curl real e certificado de teste gerado com OpenSSL em servidor HTTPS local: valida GETs de início/sucesso/falha, ausência de pings na verificação e sucesso do backup mesmo com resposta HTTP 503. Requer curl e OpenSSL além das dependências anteriores. Os recursos de teste são removidos no `finally`. Não lê credenciais reais, não conecta ao R2 e não monta volumes existentes. O CI executa esse ensaio antes dos testes da aplicação.
 
 ## Referências
 
+- [Healthchecks.io: pings de início e conclusão](https://healthchecks.io/docs/measuring_script_run_time/).
+- [Healthchecks.io: sinalização de falhas](https://healthchecks.io/docs/signaling_failures/).
 - [Restic 0.18.1: política de retenção e agrupamento](https://restic.readthedocs.io/en/v0.18.1/060_forget.html).
 - [Restic 0.18.1: backups e códigos de saída](https://restic.readthedocs.io/en/v0.18.1/040_backup.html).
 - [Cloudflare R2: endpoint S3 e região auto](https://developers.cloudflare.com/r2/get-started/s3/).

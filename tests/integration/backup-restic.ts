@@ -1,7 +1,10 @@
 /** No R2 access, Compose stack or existing volume is used by this recovery rehearsal. */
 import assert from 'node:assert/strict'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFile, execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer, type Server } from 'node:https'
+import { randomUUID } from 'node:crypto'
+import { promisify } from 'node:util'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -12,6 +15,8 @@ const resticUser = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`
 const database = `opusto-backup-test-${process.pid}`
 const restoredDatabase = `${database}-restore`
 const createdContainers: string[] = []
+let monitoringServer: Server | undefined
+const execFileAsync = promisify(execFile)
 const repository = path.join(directory, 'repository')
 const media = path.join(directory, 'media')
 const restore = path.join(directory, 'restore')
@@ -124,6 +129,49 @@ async function startPostgres(name: string) {
 }
 
 try {
+  // Exercise the actual curl/TLS transport only against a disposable local server.
+  const certificate = path.join(directory, 'monitor.crt')
+  const privateKey = path.join(directory, 'monitor.key')
+  const certificateConfig = path.join(directory, 'monitor.cnf')
+  writeFileSync(
+    certificateConfig,
+    '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=127.0.0.1\n[ext]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\nextendedKeyUsage=serverAuth\n',
+  )
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      privateKey,
+      '-out',
+      certificate,
+      '-days',
+      '1',
+      '-config',
+      certificateConfig,
+    ],
+    { stdio: 'ignore' },
+  )
+  const requests: { method?: string; url?: string }[] = []
+  let monitoringStatus = 200
+  monitoringServer = createServer(
+    { key: readFileSync(privateKey), cert: readFileSync(certificate) },
+    (request, response) => {
+      requests.push({ method: request.method, url: request.url })
+      response.writeHead(monitoringStatus)
+      response.end('OK')
+    },
+  )
+  await new Promise<void>((resolve) => monitoringServer!.listen(0, '127.0.0.1', resolve))
+  const address = monitoringServer.address()
+  assert(address && typeof address === 'object')
+  const monitoringPath = `/test-${randomUUID()}`
+  const monitoringURL = `https://127.0.0.1:${address.port}${monitoringPath}`
+
   await startPostgres(database)
   runDocker(
     [
@@ -168,7 +216,7 @@ fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
   writeAppConfig(false)
   writeFileSync(
     path.join(directory, '.env.backup'),
-    'RESTIC_REPOSITORY=s3:https://unused.invalid/test\nRESTIC_PASSWORD=disposable-integration-password\nAWS_ACCESS_KEY_ID=test-only\nAWS_SECRET_ACCESS_KEY=test-only\n',
+    `RESTIC_REPOSITORY=s3:https://unused.invalid/test\nRESTIC_PASSWORD=disposable-integration-password\nAWS_ACCESS_KEY_ID=test-only\nAWS_SECRET_ACCESS_KEY=test-only\nHEALTHCHECKS_PING_URL=${monitoringURL}\n`,
   )
   writeFileSync(
     path.join(directory, 'compose.yaml'),
@@ -176,6 +224,7 @@ fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
   )
   const backupEnv = {
     ...process.env,
+    CURL_CA_BUNDLE: certificate,
     PATH: `${bin}:${process.env.PATH}`,
     DEPLOY_DIR: directory,
     ENV_FILE: appFile,
@@ -187,8 +236,12 @@ fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
     BACKUP_INTEGRATION_MEDIA: media,
   }
   const backup = () =>
-    execFileSync('bash', ['ops/backup.sh', 'integration'], { env: backupEnv, encoding: 'utf8' })
-  backup()
+    execFileAsync('bash', ['ops/backup.sh', 'integration'], { env: backupEnv, encoding: 'utf8' })
+  await backup()
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [`${monitoringPath}/start`, monitoringPath],
+  )
   type Snapshot = { id: string; hostname: string; tags: string[]; paths: string[] }
   const snapshots = (): Snapshot[] => JSON.parse(restic(['snapshots', '--json']))
   const first = snapshots()[0]
@@ -272,7 +325,7 @@ fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
   )
   const unrelatedID = JSON.parse(unrelatedOutput.trim().split('\n').at(-1)!).snapshot_id
   writeAppConfig(true)
-  backup()
+  await backup()
   const kept = snapshots()
   assert(
     kept.some((snapshot) => snapshot.id === pinned.id),
@@ -291,10 +344,37 @@ fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
     'Retention must preserve a current backup',
   )
   restic(['check', '--read-data'])
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [`${monitoringPath}/start`, monitoringPath, `${monitoringPath}/start`, monitoringPath],
+  )
+  writeFileSync(
+    appFile,
+    readFileSync(appFile, 'utf8').replace('POSTGRES_DB=backup_test', 'POSTGRES_DB=missing_test'),
+  )
+  await assert.rejects(backup(), { code: 1 })
+  assert.equal(requests.at(-1)?.url, `${monitoringPath}/fail`)
+  const notificationCount = requests.length
+  await execFileAsync('bash', ['ops/verify-backup.sh'], { env: backupEnv })
+  assert.equal(requests.length, notificationCount, 'Manual verification must not notify')
+  writeAppConfig(true)
+  monitoringStatus = 503
+  const outage = await backup()
+  assert.match(outage.stderr, /WARNING: Healthchecks communication failed/)
+  assert(!outage.stderr.includes(monitoringURL), 'A transport warning must not disclose the URL')
+  assert.deepEqual(
+    requests.slice(-2).map((request) => request.url),
+    [`${monitoringPath}/start`, monitoringPath],
+  )
+  assert(requests.every((request) => request.method === 'GET'))
   console.log(
-    'PASS: real PostgreSQL custom dump restored into isolated PostgreSQL; media bytes match; encrypted Restic backup/restore, single-snapshot protection, 7/4/3 retention, pinned baseline and host scope verified. No R2, production data or existing volumes used.',
+    'PASS: real PostgreSQL custom dump restored into isolated PostgreSQL; media bytes match; encrypted Restic backup/restore, single-snapshot protection, 7/4/3 retention, pinned baseline and host scope verified; real local HTTPS start/success/fail, verification silence and monitoring outage isolation verified. No R2, production data or existing volumes used.',
   )
 } finally {
+  if (monitoringServer) {
+    monitoringServer.closeAllConnections()
+    await new Promise<void>((resolve) => monitoringServer!.close(() => resolve()))
+  }
   for (const container of createdContainers.reverse())
     spawnSync(docker, ['rm', '--force', container], { stdio: 'ignore' })
   rmSync(directory, { recursive: true, force: true })

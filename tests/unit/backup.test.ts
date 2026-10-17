@@ -13,8 +13,15 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const directories: string[] = []
+const pingURL = 'https://monitor.invalid/private-test-token'
 const secret = 'literal-credential-$notExpanded-$(touch SHOULD_NOT_EXIST)'
-type Call = { args: string[]; credentials: Record<string, string> }
+type Call = {
+  args: string[]
+  credentials: Record<string, string>
+  notification?: string
+  cleaned?: boolean
+  healthchecksURL?: string
+}
 
 function fixture(scenario = '', retention = false) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'opusto-backup-test-'))
@@ -24,6 +31,11 @@ function fixture(scenario = '', retention = false) {
   const docker = path.join(bin, 'docker')
   const contents = readFileSync('tests/fixtures/backup-docker.mjs', 'utf8')
   writeFileSync(docker, `#!/usr/bin/env node\n${contents}`, { mode: 0o755 })
+  writeFileSync(
+    path.join(bin, 'curl'),
+    `#!/usr/bin/env node\n${readFileSync('tests/fixtures/backup-curl.mjs', 'utf8')}`,
+    { mode: 0o755 },
+  )
   // macOS lacks util-linux flock; exercise the same OS flock(2) on inherited FD 9.
   if (process.platform === 'darwin') {
     writeFileSync(
@@ -72,14 +84,32 @@ except BlockingIOError:
       ],
       { env, encoding: 'utf8' },
     )
-  const calls = (): Call[] =>
+  const events = (): Call[] =>
     existsSync(log)
       ? readFileSync(log, 'utf8')
           .trim()
           .split('\n')
           .map((line) => JSON.parse(line))
       : []
-  return { directory, envFile, backupEnvFile, staging, env, run, calls }
+  const calls = () => events().filter((event) => !event.notification)
+  const notifications = () => events().filter((event) => event.notification)
+  const monitor = (url = pingURL) =>
+    writeFileSync(
+      backupEnvFile,
+      readFileSync(backupEnvFile, 'utf8') + `HEALTHCHECKS_PING_URL=${url}\n`,
+    )
+  return {
+    directory,
+    envFile,
+    backupEnvFile,
+    staging,
+    env,
+    run,
+    calls,
+    events,
+    notifications,
+    monitor,
+  }
 }
 
 afterEach(() => {
@@ -248,3 +278,197 @@ describe('encrypted R2 backup', () => {
     expect(context.calls().filter(({ args }) => args.includes('pg_dump'))).toHaveLength(1)
   })
 })
+
+describe('Healthchecks backup monitoring', () => {
+  it('sends start and success in order, only after retention and cleanup', () => {
+    const context = fixture('', true)
+    context.monitor(`${pingURL}/`)
+    const result = context.run()
+    expect(result.status, result.stderr).toBe(0)
+    expect(context.notifications().map((event) => event.notification)).toEqual([
+      `${pingURL}/start`,
+      pingURL,
+    ])
+    const events = context.events()
+    expect(events[0].notification).toBe(`${pingURL}/start`)
+    expect(events.at(-2)!.args).toContain('check')
+    expect(events.at(-1)).toMatchObject({ notification: pingURL, cleaned: true })
+    for (const event of context.notifications()) {
+      expect(event.args).toEqual(
+        expect.arrayContaining([
+          '--request',
+          'GET',
+          '--connect-timeout',
+          '2',
+          '--max-time',
+          '5',
+          '--retry',
+          '0',
+          '--config',
+          '-',
+        ]),
+      )
+      expect(event.args[0]).toBe('--disable')
+      expect(event.args.join(' ')).not.toContain(pingURL)
+    }
+    expect(context.calls().every((event) => !event.healthchecksURL)).toBe(true)
+    expect(result.stdout + result.stderr).not.toContain(pingURL)
+    expect(result.stdout + result.stderr).not.toContain('private-test-token')
+  })
+
+  it.each([
+    ['dump-error', 1],
+    ['upload-partial', 3],
+    ['snapshot-invalid', 1],
+    ['retention-error', 1],
+  ] as const)('signals failure and preserves the exit code on %s', (scenario, status) => {
+    const context = fixture(scenario, true)
+    context.monitor()
+    const result = context.run()
+    expect(result.status).toBe(status)
+    expect(context.notifications().map((event) => event.notification)).toEqual([
+      `${pingURL}/start`,
+      `${pingURL}/fail`,
+    ])
+    expect(context.notifications().at(-1)!.cleaned).toBe(true)
+    expect(result.stdout + result.stderr).not.toContain(pingURL)
+  })
+
+  it.each(['timeout', 'error', 'redirect'])(
+    'warns on HTTP %s without invalidating a completed backup',
+    (scenario) => {
+      const context = fixture()
+      context.monitor()
+      Object.assign(context.env, { BACKUP_TEST_HTTP_SCENARIO: scenario })
+      const result = context.run()
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stderr).toContain('WARNING: Healthchecks communication failed')
+      expect(result.stdout + result.stderr).not.toContain(pingURL)
+      expect(context.notifications().map((event) => event.notification)).toEqual([
+        `${pingURL}/start`,
+        pingURL,
+      ])
+    },
+  )
+
+  it('does not mask a partial backup error when the failure ping times out', () => {
+    const context = fixture('upload-partial')
+    context.monitor()
+    Object.assign(context.env, { BACKUP_TEST_HTTP_SCENARIO: 'timeout' })
+    const result = context.run()
+    expect(result.status).toBe(3)
+    expect(context.notifications().at(-1)!.notification).toBe(`${pingURL}/fail`)
+    expect(result.stderr).toContain('WARNING: Healthchecks communication failed')
+  })
+
+  it.each(['', 'check-error'])('never pings for manual verification (scenario=%s)', (scenario) => {
+    const context = fixture(scenario)
+    context.monitor()
+    const result = context.run(true)
+    expect(result.status).toBe(scenario ? 1 : 0)
+    expect(context.notifications()).toEqual([])
+  })
+
+  it('signals a configuration failure after lock acquisition', () => {
+    const context = fixture()
+    context.monitor()
+    writeFileSync(
+      context.backupEnvFile,
+      readFileSync(context.backupEnvFile, 'utf8').replace(/^AWS_ACCESS_KEY_ID=.*$/m, ''),
+    )
+    expect(context.run().status).toBe(1)
+    expect(context.notifications().map((event) => event.notification)).toEqual([
+      `${pingURL}/start`,
+      `${pingURL}/fail`,
+    ])
+    expect(context.calls()).toEqual([])
+  })
+
+  it('warns and skips malformed monitoring configuration without breaking the backup', () => {
+    const context = fixture()
+    context.monitor('http://monitor.invalid/invalid')
+    const result = context.run()
+    expect(result.status).toBe(0)
+    expect(result.stderr).toContain('WARNING: Invalid Healthchecks configuration')
+    expect(context.notifications()).toEqual([])
+  })
+
+  it('does not require monitoring and ignores an inherited ping URL', () => {
+    const context = fixture()
+    Object.assign(context.env, { HEALTHCHECKS_PING_URL: pingURL })
+    expect(context.run().status).toBe(0)
+    expect(context.notifications()).toEqual([])
+  })
+
+  it('does not leak the ping URL under bash tracing', () => {
+    const context = fixture()
+    context.monitor()
+    const result = spawnSync('bash', ['-x', path.resolve('ops/backup.sh')], {
+      env: context.env,
+      encoding: 'utf8',
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout + result.stderr).not.toContain(pingURL)
+  })
+
+  it('keeps the active job notifications unchanged when a concurrent backup is rejected', async () => {
+    const context = fixture('hold')
+    context.monitor()
+    const first = spawn('bash', [path.resolve('ops/backup.sh')], {
+      env: context.env,
+      stdio: 'ignore',
+    })
+    const completed = new Promise<number | null>((resolve) => first.once('exit', resolve))
+    try {
+      await vi.waitFor(() => expect(existsSync(context.env.BACKUP_TEST_READY)).toBe(true), {
+        timeout: 5000,
+      })
+      expect(context.run().status).toBe(75)
+      expect(context.run(true).status).toBe(75)
+      expect(context.notifications().map((event) => event.notification)).toEqual([
+        `${pingURL}/start`,
+      ])
+    } finally {
+      writeFileSync(context.env.BACKUP_TEST_RELEASE, '')
+      expect(await completed).toBe(0)
+    }
+    expect(context.notifications().map((event) => event.notification)).toEqual([
+      `${pingURL}/start`,
+      pingURL,
+    ])
+  }, 10000)
+})
+
+it('signals a terminated backup without replacing exit 143', async () => {
+  const context = fixture('hold')
+  context.monitor()
+  const first = spawn('bash', [path.resolve('ops/backup.sh')], {
+    env: context.env,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  let diagnostic = ''
+  first.stderr.on('data', (data) => {
+    diagnostic += data.toString()
+  })
+  let exitCode: number | null = null
+  const completed = new Promise<number | null>((resolve) => first.once('exit', resolve))
+  try {
+    await vi.waitFor(
+      () => {
+        if (first.exitCode !== null)
+          throw new Error(`Backup exited early: ${first.exitCode}: ${diagnostic}`)
+        expect(existsSync(context.env.BACKUP_TEST_READY)).toBe(true)
+      },
+      { timeout: 5000 },
+    )
+    first.kill('SIGTERM')
+  } finally {
+    writeFileSync(context.env.BACKUP_TEST_RELEASE, '')
+    exitCode = await completed
+  }
+  expect(exitCode).toBe(143)
+  expect(context.notifications().map((event) => event.notification)).toEqual([
+    `${pingURL}/start`,
+    `${pingURL}/fail`,
+  ])
+}, 10000)
